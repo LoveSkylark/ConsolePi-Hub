@@ -4,8 +4,31 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HUB_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${HUB_DIR}/.env"
+REPO_URL="${CONSOLEPI_HUB_REPO_URL:-https://github.com/LoveSkylark/ConsolePi-Hub}"
+REPO_REF="${CONSOLEPI_HUB_REPO_REF:-main}"
+RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
+
+download_repo_file() {
+  local repo_path="$1"
+  local target_path="$2"
+  local url="${RAW_BASE}/${repo_path}"
+
+  mkdir -p "$(dirname "${target_path}")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${url}" -o "${target_path}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "${url}" -O "${target_path}"
+  else
+    echo "Need curl or wget to pull missing files from ${REPO_URL}." >&2
+    return 1
+  fi
+}
 
 if [[ ! -f "${ENV_FILE}" ]]; then
+  if [[ ! -f "${HUB_DIR}/.env.example" ]]; then
+    echo "Missing ${HUB_DIR}/.env.example; pulling from ${REPO_URL}@${REPO_REF}"
+    download_repo_file "HUB/.env.example" "${HUB_DIR}/.env.example" || true
+  fi
   echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
   exit 1
 fi

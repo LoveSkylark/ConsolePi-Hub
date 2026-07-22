@@ -7,6 +7,9 @@ ENV_FILE="${HUB_DIR}/.env"
 RENDER_SCRIPT="${SCRIPT_DIR}/render-profile-configs.sh"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 DRY_RUN="false"
+REPO_URL="${CONSOLEPI_HUB_REPO_URL:-https://github.com/LoveSkylark/ConsolePi-Hub}"
+REPO_REF="${CONSOLEPI_HUB_REPO_REF:-main}"
+RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
 
 PROFILE=""
 PEER_NAME=""
@@ -25,6 +28,32 @@ Options:
   --dry-run
   --help
 EOF
+}
+
+download_repo_file() {
+  local repo_path="$1"
+  local target_path="$2"
+  local url="${RAW_BASE}/${repo_path}"
+
+  mkdir -p "$(dirname "${target_path}")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${url}" -o "${target_path}"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "${url}" -O "${target_path}"
+  else
+    echo "Need curl or wget to pull missing files from ${REPO_URL}." >&2
+    return 1
+  fi
+}
+
+ensure_repo_asset() {
+  local local_path="$1"
+  local repo_path="$2"
+
+  if [[ ! -f "${local_path}" ]]; then
+    echo "Missing ${local_path}; pulling ${repo_path} from ${REPO_URL}@${REPO_REF}"
+    download_repo_file "${repo_path}" "${local_path}"
+  fi
 }
 
 prompt_required() {
@@ -166,6 +195,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+ensure_repo_asset "${RENDER_SCRIPT}" "HUB/wireguard/render-profile-configs.sh"
+chmod +x "${RENDER_SCRIPT}"
+
+if [[ ! -f "${ENV_FILE}" && ! -f "${HUB_DIR}/.env.example" ]]; then
+  echo "Missing ${HUB_DIR}/.env.example; pulling from ${REPO_URL}@${REPO_REF}"
+  download_repo_file "HUB/.env.example" "${HUB_DIR}/.env.example" || true
+fi
 
 [[ -f "${ENV_FILE}" ]] || {
   echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
