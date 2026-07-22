@@ -1,0 +1,28 @@
+# Trusted profile tunnel
+# Peers in this profile are allowed to access ConsolePi SSH.
+
+[Interface]
+Address = 10.99.99.1/24
+ListenPort = 51820
+PrivateKey = <HUB_TRUSTED_PRIVATE_KEY>
+SaveConfig = false
+PostUp = iptables -A FORWARD -i %i -o %i -j DROP
+PostDown = iptables -D FORWARD -i %i -o %i -j DROP
+
+[Peer]
+# Trusted peer 1
+PublicKey = <TRUSTED_PEER_1_PUBLIC_KEY>
+AllowedIPs = 10.99.99.11/32
+PersistentKeepalive = 25
+
+[Peer]
+# Trusted peer 2
+PublicKey = <TRUSTED_PEER_2_PUBLIC_KEY>
+AllowedIPs = 10.99.99.12/32
+PersistentKeepalive = 25
+
+[Peer]
+# Trusted peer 3
+PublicKey = <TRUSTED_PEER_3_PUBLIC_KEY>
+AllowedIPs = 10.99.99.13/32
+PersistentKeepalive = 25

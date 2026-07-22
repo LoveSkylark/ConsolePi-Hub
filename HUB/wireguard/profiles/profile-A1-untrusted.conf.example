@@ -1,0 +1,12 @@
+# Profile A1 (UNTRUSTED)
+# Use this for peers that should form VPN connectivity but NOT access ConsolePi SSH.
+
+[Interface]
+Address = 10.99.98.11/32
+PrivateKey = <UNTRUSTED_PEER_1_PRIVATE_KEY>
+
+[Peer]
+PublicKey = <HUB_PUBLIC_KEY>
+Endpoint = <PUBLIC_IP_OR_DDNS>:51820
+AllowedIPs = 10.99.98.1/32
+PersistentKeepalive = 25

@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Local environment files
+HUB/.env
+SPOKE/.env
+
+# Rendered or active WireGuard configs
+HUB/wireguard/trusted/config/wg_confs/wg-trusted.conf
+HUB/wireguard/untrusted/config/wg_confs/wg-untrusted.conf
+HUB/wireguard/config/wg_confs/wg0.conf
+SPOKE/rendered/
+
+# Peer registration helper outputs
+HUB/wireguard/profiles/*.conf.snippet
+
+# Runtime ConsolePi data
+HUB/consolepi/data/
+
+# Local backups and temporary files
+*.bak
+*.bak.*
+*.tmp
+*.swp
+
+# Python cache
+__pycache__/
+*.pyc
