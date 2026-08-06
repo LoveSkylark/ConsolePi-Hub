@@ -10,16 +10,10 @@ CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
-CONSOLEPI_AUTO_MENU="${CONSOLEPI_AUTO_MENU:-true}"
-CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_AUTO_MENU_USERS:-}"
+CONSOLEPI_MENU_USERS=""
 
 # Accept comma-separated env input to avoid shell parsing issues in .env files.
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
-CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_AUTO_MENU_USERS//,/ }"
-
-if [[ -z "${CONSOLEPI_AUTO_MENU_USERS//[[:space:]]/}" ]]; then
-  CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_ALLOW_USERS}"
-fi
 
 add_allow_user() {
   local user="$1"
@@ -28,6 +22,17 @@ add_allow_user() {
       ;;
     *)
       CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS} ${user}"
+      ;;
+  esac
+}
+
+add_menu_user() {
+  local user="$1"
+  case " ${CONSOLEPI_MENU_USERS} " in
+    *" ${user} "*)
+      ;;
+    *)
+      CONSOLEPI_MENU_USERS="${CONSOLEPI_MENU_USERS} ${user}"
       ;;
   esac
 }
@@ -41,7 +46,8 @@ trim_spaces() {
 
 provision_user_from_file() {
   local user="$1"
-  local password_hash="$2"
+  local login_mode="$2"
+  local password_hash="$3"
 
   [[ "${user}" =~ ^[a-z_][a-z0-9_-]*$ ]] || {
     echo "Skipping invalid username in ${CONSOLEPI_USERS_FILE}: ${user}" >&2
@@ -66,6 +72,10 @@ provision_user_from_file() {
   fi
 
   add_allow_user "${user}"
+
+  if [[ "${login_mode}" == "menu" ]]; then
+    add_menu_user "${user}"
+  fi
 }
 
 mkdir -p "${RUNTIME_DIR}" /data/ssh
@@ -93,13 +103,30 @@ if [[ -d /data/ssh ]]; then
 fi
 
 if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
-  while IFS=':' read -r raw_user raw_hash; do
+  while IFS=':' read -r raw_user raw_mode raw_hash; do
     raw_user="$(trim_spaces "${raw_user}")"
+    raw_mode="$(trim_spaces "${raw_mode}")"
     raw_hash="$(trim_spaces "${raw_hash}")"
 
     [[ -n "${raw_user}" ]] || continue
     [[ "${raw_user}" == \#* ]] && continue
-    provision_user_from_file "${raw_user}" "${raw_hash}"
+
+    # Backward compatible format: username:password_hash
+    if [[ -z "${raw_hash}" ]]; then
+      raw_hash="${raw_mode}"
+      raw_mode="shell"
+    fi
+
+    case "${raw_mode}" in
+      menu|shell)
+        ;;
+      *)
+        echo "Skipping ${raw_user}: invalid login mode '${raw_mode}' in ${CONSOLEPI_USERS_FILE} (use menu or shell)" >&2
+        continue
+        ;;
+    esac
+
+    provision_user_from_file "${raw_user}" "${raw_mode}" "${raw_hash}"
   done < "${CONSOLEPI_USERS_FILE}"
 fi
 
@@ -172,7 +199,9 @@ if [[ -f /etc/profile.d/consolepi.sh ]]; then
   source /etc/profile.d/consolepi.sh
 fi
 
-if [[ "${CONSOLEPI_AUTO_MENU}" == "true" ]]; then
+CONSOLEPI_MENU_USERS="$(trim_spaces "${CONSOLEPI_MENU_USERS}")"
+
+if [[ -n "${CONSOLEPI_MENU_USERS}" ]]; then
   cat > /etc/profile.d/consolepi-auto-menu.sh <<EOF
 #!/usr/bin/env bash
 
@@ -189,7 +218,7 @@ esac
 [[ -z "\${CONSOLEPI_NO_AUTO_MENU:-}" ]] || return 0
 [[ -z "\${CONSOLEPI_MENU_LAUNCHED:-}" ]] || return 0
 
-case " ${CONSOLEPI_AUTO_MENU_USERS} " in
+case " ${CONSOLEPI_MENU_USERS} " in
   *" \${USER:-} "*)
     export CONSOLEPI_MENU_LAUNCHED=1
     if command -v consolepi-menu >/dev/null 2>&1; then

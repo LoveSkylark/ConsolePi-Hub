@@ -124,11 +124,10 @@ Optional multi-user password access:
 - Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
   - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
 - Keep `CONSOLEPI_GRANT_SUDO=true` if those users need `consolepi-menu` Python mode
-- Auto-launch to menu on SSH login:
-  - `CONSOLEPI_AUTO_MENU=true`
-  - `CONSOLEPI_AUTO_MENU_USERS=opsadmin,nocadmin` (or leave empty to use all allowed users)
 - Create `./consolepi/data/ssh/users.conf` with one entry per line:
-  - `username:password_hash`
+  - `username:mode:password_hash`
+  - mode values: `menu` or `shell`
+  - backward compatible `username:password_hash` format is treated as `shell`
 - Generate password hashes with:
 
 ```bash
@@ -138,8 +137,8 @@ openssl passwd -6 'StrongPasswordHere'
 - Example `users.conf`:
 
 ```text
-opsadmin:$6$rounds=656000$abc...$xyz...
-nocadmin:$6$rounds=656000$def...$uvw...
+opsadmin:menu:$6$rounds=656000$abc...$xyz...
+nocadmin:shell:$6$rounds=656000$def...$uvw...
 ```
 
 Re-deploy after changes so users and auth policy are applied.
