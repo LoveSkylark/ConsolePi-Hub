@@ -226,9 +226,12 @@ set -euo pipefail
 export CONSOLEPI_MENU_LAUNCHED=1
 
 # ForceCommand sessions do not always inherit interactive shell PATH/profile.
+export BYOBU_TTY="${BYOBU_TTY:-}"
 if [[ -f /etc/profile.d/consolepi.sh ]]; then
+  set +u
   # shellcheck disable=SC1091
   source /etc/profile.d/consolepi.sh
+  set -u
 fi
 
 if command -v consolepi-menu >/dev/null 2>&1; then
