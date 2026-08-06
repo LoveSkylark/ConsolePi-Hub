@@ -124,6 +124,18 @@ SSH access is profile-restricted at interface level:
 
 No per-IP allowlist management is required.
 
+Dedicated external management SSH port is also exposed on the host:
+
+- host port: `MGMT_SSH_PORT` (default `2222`)
+- container target: `22`
+- source restriction: `MGMT_SSH_ALLOW_CIDRS` (comma-separated CIDRs)
+
+Set `MGMT_SSH_ALLOW_CIDRS` in `.env` to your management source(s), then connect:
+
+```bash
+ssh -p 2222 consolepi@<HUB_PUBLIC_IP_OR_DNS>
+```
+
 ## 3b) Two WireGuard access profiles (A/B)
 
 Use two client profile classes:
@@ -167,7 +179,9 @@ You can also use the HUB registration helper non-interactively:
 ## 4) FortiGate alignment
 
 - Forward UDP 51820 (untrusted) and UDP 51821 (trusted) to this host.
+- Forward TCP `MGMT_SSH_PORT` (default 2222) to this host for external ConsolePi management.
 - Allow inbound policies for both UDP ports.
+- Restrict inbound TCP `MGMT_SSH_PORT` policy to your management source addresses.
 - Ensure app control does not block WireGuard.
 
 ## 5) Important runtime notes

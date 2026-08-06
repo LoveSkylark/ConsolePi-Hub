@@ -11,6 +11,7 @@ services:
       - TZ=${TZ:-UTC}
     ports:
       - "${WG_TRUSTED_PORT:-51821}:51820/udp"
+      - "${MGMT_SSH_PORT:-2222}:22/tcp"
     volumes:
       - ./wireguard/trusted/config:/config
       # For Linux hosts that need module visibility from the container.
@@ -56,6 +57,7 @@ services:
     environment:
       - TRUSTED_SSH_INTERFACE=${TRUSTED_SSH_INTERFACE:-wg-trusted}
       - UNTRUSTED_SSH_INTERFACE=${UNTRUSTED_SSH_INTERFACE:-wg-untrusted}
+      - MGMT_SSH_ALLOW_CIDRS=${MGMT_SSH_ALLOW_CIDRS:-}
     volumes:
       - ./consolepi/data:/data
       - ./consolepi/workspace:/workspace

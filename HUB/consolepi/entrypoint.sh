@@ -5,6 +5,7 @@ CONSOLEPI_HOME="/etc/ConsolePi"
 RUNTIME_DIR="/data/runtime"
 TRUSTED_SSH_INTERFACE="${TRUSTED_SSH_INTERFACE:-wg0}"
 UNTRUSTED_SSH_INTERFACE="${UNTRUSTED_SSH_INTERFACE:-}"
+MGMT_SSH_ALLOW_CIDRS="${MGMT_SSH_ALLOW_CIDRS:-}"
 
 mkdir -p "${RUNTIME_DIR}" /data/ssh
 
@@ -46,6 +47,16 @@ if command -v iptables >/dev/null 2>&1; then
   if iptables -L >/dev/null 2>&1; then
     iptables -N CP_SSH_GUARD 2>/dev/null || true
     iptables -F CP_SSH_GUARD
+
+    # Optional external management CIDR allow-list for dedicated SSH port mapping.
+    if [[ -n "${MGMT_SSH_ALLOW_CIDRS}" ]]; then
+      IFS=',' read -r -a mgmt_cidrs <<< "${MGMT_SSH_ALLOW_CIDRS}"
+      for cidr in "${mgmt_cidrs[@]}"; do
+        cidr="${cidr//[[:space:]]/}"
+        [[ -n "${cidr}" ]] || continue
+        iptables -A CP_SSH_GUARD -s "${cidr}" -j ACCEPT
+      done
+    fi
 
     iptables -A CP_SSH_GUARD -i "${TRUSTED_SSH_INTERFACE}" -j ACCEPT
 
