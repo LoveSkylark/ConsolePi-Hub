@@ -10,9 +10,16 @@ CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
+CONSOLEPI_AUTO_MENU="${CONSOLEPI_AUTO_MENU:-true}"
+CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_AUTO_MENU_USERS:-}"
 
 # Accept comma-separated env input to avoid shell parsing issues in .env files.
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
+CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_AUTO_MENU_USERS//,/ }"
+
+if [[ -z "${CONSOLEPI_AUTO_MENU_USERS//[[:space:]]/}" ]]; then
+  CONSOLEPI_AUTO_MENU_USERS="${CONSOLEPI_ALLOW_USERS}"
+fi
 
 add_allow_user() {
   local user="$1"
@@ -163,6 +170,37 @@ fi
 if [[ -f /etc/profile.d/consolepi.sh ]]; then
   # shellcheck disable=SC1091
   source /etc/profile.d/consolepi.sh
+fi
+
+if [[ "${CONSOLEPI_AUTO_MENU}" == "true" ]]; then
+  cat > /etc/profile.d/consolepi-auto-menu.sh <<EOF
+#!/usr/bin/env bash
+
+case "\$-" in
+  *i*)
+    ;;
+  *)
+    return 0
+    ;;
+esac
+
+[[ -n "\${SSH_TTY:-}" ]] || return 0
+[[ -z "\${SSH_ORIGINAL_COMMAND:-}" ]] || return 0
+[[ -z "\${CONSOLEPI_NO_AUTO_MENU:-}" ]] || return 0
+[[ -z "\${CONSOLEPI_MENU_LAUNCHED:-}" ]] || return 0
+
+case " ${CONSOLEPI_AUTO_MENU_USERS} " in
+  *" \${USER:-} "*)
+    export CONSOLEPI_MENU_LAUNCHED=1
+    if command -v consolepi-menu >/dev/null 2>&1; then
+      consolepi-menu
+    fi
+    ;;
+esac
+EOF
+  chmod 755 /etc/profile.d/consolepi-auto-menu.sh
+else
+  rm -f /etc/profile.d/consolepi-auto-menu.sh
 fi
 
 exec "$@"
