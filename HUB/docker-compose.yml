@@ -66,3 +66,12 @@ services:
     stdin_open: true
     tty: true
     restart: unless-stopped
+
+networks:
+  default:
+    name: hub_default
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.250.21.0/24
+          gateway: 10.250.21.1
