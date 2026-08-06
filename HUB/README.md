@@ -220,6 +220,7 @@ You can also use the HUB registration helper non-interactively:
 - The `consolepi` service is included in normal compose lifecycle operations.
 - It uses `network_mode: service:wireguard-trusted` so ConsolePi is attached to the trusted VPN namespace.
 - Runtime data is persisted under `./consolepi/data`.
+- ConsolePi logs are persisted under `./consolepi/data/log` (mounted to `/var/log/ConsolePi` in container).
 - Inbound SSH for ConsolePi is provided by the ConsolePi container itself and is reachable through the shared WireGuard namespace.
 - Untrusted profile clients are blocked from SSH by interface policy applied at container startup.
 

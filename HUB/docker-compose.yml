@@ -61,6 +61,7 @@ services:
       - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}
     volumes:
       - ./consolepi/data:/data
+      - ./consolepi/data/log:/var/log/ConsolePi
       - ./consolepi/workspace:/workspace
     stdin_open: true
     tty: true

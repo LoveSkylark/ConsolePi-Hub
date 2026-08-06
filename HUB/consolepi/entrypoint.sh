@@ -82,6 +82,11 @@ provision_user_from_file() {
 
 mkdir -p "${RUNTIME_DIR}" /data/ssh
 
+# ConsolePi python menu expects this log path to exist and be writable.
+install -d -m 0777 /var/log/ConsolePi
+touch /var/log/ConsolePi/consolepi.log
+chmod 0666 /var/log/ConsolePi/consolepi.log
+
 # Seed runtime config from example only if one does not exist yet.
 if [[ ! -f "${RUNTIME_DIR}/ConsolePi.yaml" ]]; then
   cp /etc/ConsolePi.yaml "${RUNTIME_DIR}/ConsolePi.yaml"
