@@ -201,6 +201,37 @@ fi
 
 CONSOLEPI_MENU_USERS="$(trim_spaces "${CONSOLEPI_MENU_USERS}")"
 
+cat > /usr/local/bin/consolepi-menu-login.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+export CONSOLEPI_MENU_LAUNCHED=1
+
+if command -v consolepi-menu >/dev/null 2>&1; then
+  consolepi-menu
+fi
+
+# If menu exits, drop user to a login shell without relaunch loop.
+export CONSOLEPI_NO_AUTO_MENU=1
+exec /bin/bash -l
+EOF
+chmod 755 /usr/local/bin/consolepi-menu-login.sh
+
+# Build sshd match rules for users set to "menu" mode.
+if [[ -f /etc/ssh/sshd_config ]]; then
+  sed -i '/^# BEGIN CONSOLEPI_FORCE_MENU$/,/^# END CONSOLEPI_FORCE_MENU$/d' /etc/ssh/sshd_config
+  if [[ -n "${CONSOLEPI_MENU_USERS}" ]]; then
+    {
+      echo '# BEGIN CONSOLEPI_FORCE_MENU'
+      for user in ${CONSOLEPI_MENU_USERS}; do
+        echo "Match User ${user}"
+        echo '  ForceCommand /usr/local/bin/consolepi-menu-login.sh'
+      done
+      echo '# END CONSOLEPI_FORCE_MENU'
+    } >> /etc/ssh/sshd_config
+  fi
+fi
+
 if [[ -n "${CONSOLEPI_MENU_USERS}" ]]; then
   cat > /etc/profile.d/consolepi-auto-menu.sh <<EOF
 #!/usr/bin/env bash
