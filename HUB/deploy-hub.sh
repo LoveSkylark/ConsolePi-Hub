@@ -13,6 +13,107 @@ REFRESH_CONFIGS="false"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
 
+prompt_yes_no() {
+  local label="$1"
+  local default_value="$2"
+  local reply
+
+  while true; do
+    read -r -p "${label} [${default_value}]: " reply
+    reply="${reply:-${default_value}}"
+    case "${reply}" in
+      y|Y|yes|YES)
+        return 0
+        ;;
+      n|N|no|NO)
+        return 1
+        ;;
+      *)
+        echo "Answer y or n."
+        ;;
+    esac
+  done
+}
+
+extract_private_key() {
+  local file_path="$1"
+  awk '$1 == "PrivateKey" && $2 == "=" { print $3; exit }' "${file_path}"
+}
+
+set_private_key() {
+  local file_path="$1"
+  local key_value="$2"
+  local tmp_file
+
+  tmp_file="$(mktemp)"
+  awk -v key="${key_value}" '
+    $1 == "PrivateKey" && $2 == "=" {
+      print "PrivateKey = " key
+      next
+    }
+    { print }
+  ' "${file_path}" > "${tmp_file}"
+  mv "${tmp_file}" "${file_path}"
+}
+
+ensure_wg_key_tool() {
+  if command -v wg >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    if prompt_yes_no "'wg' tool not found. Install wireguard-tools now?" "y"; then
+      if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y wireguard-tools
+      else
+        apt-get update
+        apt-get install -y wireguard-tools
+      fi
+    fi
+  fi
+
+  if ! command -v wg >/dev/null 2>&1; then
+    echo "wireguard-tools is required to auto-generate HUB private keys." >&2
+    echo "Install it and re-run, or set private keys manually in active configs." >&2
+    exit 1
+  fi
+}
+
+bootstrap_missing_private_keys() {
+  local trusted_key
+  local untrusted_key
+
+  trusted_key="$(extract_private_key "${TRUSTED_ACTIVE}")"
+  untrusted_key="$(extract_private_key "${UNTRUSTED_ACTIVE}")"
+
+  if [[ "${trusted_key}" != "<HUB_TRUSTED_PRIVATE_KEY>" && "${untrusted_key}" != "<HUB_UNTRUSTED_PRIVATE_KEY>" ]]; then
+    return 0
+  fi
+
+  echo "One or more HUB private key placeholders are still present."
+  if ! prompt_yes_no "Generate missing HUB private keys now?" "y"; then
+    echo "Set private keys manually before deploy:" >&2
+    echo "  ${TRUSTED_ACTIVE}" >&2
+    echo "  ${UNTRUSTED_ACTIVE}" >&2
+    exit 1
+  fi
+
+  ensure_wg_key_tool
+
+  if [[ "${trusted_key}" == "<HUB_TRUSTED_PRIVATE_KEY>" ]]; then
+    trusted_key="$(wg genkey)"
+    set_private_key "${TRUSTED_ACTIVE}" "${trusted_key}"
+    echo "Generated trusted HUB private key."
+  fi
+
+  if [[ "${untrusted_key}" == "<HUB_UNTRUSTED_PRIVATE_KEY>" ]]; then
+    untrusted_key="$(wg genkey)"
+    set_private_key "${UNTRUSTED_ACTIVE}" "${untrusted_key}"
+    echo "Generated untrusted HUB private key."
+  fi
+}
+
 sync_profile() {
   local example_file="$1"
   local active_file="$2"
@@ -161,8 +262,10 @@ chmod 700 "${SCRIPT_DIR}/wireguard/trusted/config" "${SCRIPT_DIR}/wireguard/trus
 chmod 700 "${SCRIPT_DIR}/wireguard/untrusted/config" "${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs"
 chmod 600 "${TRUSTED_ACTIVE}" "${UNTRUSTED_ACTIVE}"
 
+bootstrap_missing_private_keys
+
 if grep -q "<HUB_.*PRIVATE_KEY>" "${TRUSTED_ACTIVE}" || \
-   grep -q "<HUB_.*PRIVATE_KEY>" "${UNTRUSTED_ACTIVE}"; then
+  grep -q "<HUB_.*PRIVATE_KEY>" "${UNTRUSTED_ACTIVE}"; then
   echo "Active WireGuard config still has placeholder HUB private keys." >&2
   echo "Set real private keys before deploy:" >&2
   echo "  ${TRUSTED_ACTIVE}" >&2
