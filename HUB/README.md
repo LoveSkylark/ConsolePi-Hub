@@ -9,6 +9,27 @@ This folder contains a Docker Compose based HUB baseline:
 
 ## 1) Prepare files
 
+One-command deploy helper (recommended):
+
+```bash
+chmod +x deploy-hub.sh
+./deploy-hub.sh
+```
+
+Optional flags:
+
+- `--with-consolepi`: starts the `consolepi` profile service too
+- `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
+
+The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard services.
+
+Re-run behavior:
+
+- safe to run repeatedly after editing `.env`
+- preserves existing HUB private keys and existing peer public keys by matching `AllowedIPs`
+- adds newly rendered peers from updated `WG_*_PEER_IPS` lists
+- warns if new peers still have placeholder public keys
+
 1. Copy `.env.example` to `.env` and edit values.
 1. Render profile templates from `.env`:
 
