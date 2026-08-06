@@ -10,6 +10,9 @@ CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
 
+# Accept comma-separated env input to avoid shell parsing issues in .env files.
+CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
+
 add_allow_user() {
   local user="$1"
   case " ${CONSOLEPI_ALLOW_USERS} " in

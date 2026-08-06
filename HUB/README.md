@@ -121,7 +121,8 @@ Optional multi-user password access:
 
 - Enable in `.env`: `CONSOLEPI_SSH_PASSWORD_AUTH=true`
 - Keep a tight external allow-list in `MGMT_SSH_ALLOW_CIDRS`
-- Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (space-separated)
+- Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
+  - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
 - Create `./consolepi/data/ssh/users.conf` with one entry per line:
   - `username:password_hash`
 - Generate password hashes with:
