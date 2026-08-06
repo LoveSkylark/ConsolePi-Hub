@@ -12,6 +12,7 @@ CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 CONSOLEPI_MENU_USERS=""
 CONSOLEPI_MENU_EXIT_ACTION="${CONSOLEPI_MENU_EXIT_ACTION:-logout}"
+CONSOLEPI_MENU_NOPASSWD_SUDO="${CONSOLEPI_MENU_NOPASSWD_SUDO:-true}"
 
 # Accept comma-separated env input to avoid shell parsing issues in .env files.
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
@@ -202,14 +203,40 @@ fi
 
 CONSOLEPI_MENU_USERS="$(trim_spaces "${CONSOLEPI_MENU_USERS}")"
 
+if [[ "${CONSOLEPI_MENU_NOPASSWD_SUDO}" == "true" ]]; then
+  if [[ -n "${CONSOLEPI_MENU_USERS}" ]]; then
+    {
+      echo '# Managed by ConsolePi entrypoint'
+      for user in ${CONSOLEPI_MENU_USERS}; do
+        echo "${user} ALL=(ALL) NOPASSWD:ALL"
+      done
+    } > /etc/sudoers.d/consolepi-menu-users
+    chmod 440 /etc/sudoers.d/consolepi-menu-users
+  else
+    rm -f /etc/sudoers.d/consolepi-menu-users
+  fi
+else
+  rm -f /etc/sudoers.d/consolepi-menu-users
+fi
+
 cat > /usr/local/bin/consolepi-menu-login.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
 export CONSOLEPI_MENU_LAUNCHED=1
 
+# ForceCommand sessions do not always inherit interactive shell PATH/profile.
+if [[ -f /etc/profile.d/consolepi.sh ]]; then
+  # shellcheck disable=SC1091
+  source /etc/profile.d/consolepi.sh
+fi
+
 if command -v consolepi-menu >/dev/null 2>&1; then
-  consolepi-menu
+  consolepi-menu || true
+elif [[ -x /etc/ConsolePi/src/consolepi-menu.sh ]]; then
+  /etc/ConsolePi/src/consolepi-menu.sh || true
+else
+  echo "consolepi-menu command not found" >&2
 fi
 
 case "${CONSOLEPI_MENU_EXIT_ACTION:-logout}" in

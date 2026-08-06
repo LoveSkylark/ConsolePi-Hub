@@ -127,6 +127,8 @@ Optional multi-user password access:
 - For users with `mode=menu`, SSH uses `ForceCommand` to enter menu directly
 - Set `CONSOLEPI_MENU_EXIT_ACTION=logout` (default) to close session when menu exits
 - Set `CONSOLEPI_MENU_EXIT_ACTION=shell` only if you want menu users to fall back to shell
+- `CONSOLEPI_MENU_NOPASSWD_SUDO=true` grants passwordless sudo for `mode=menu` users only
+  so `consolepi-menu` can run in forced-command mode without prompt failures
 - Create `./consolepi/data/ssh/users.conf` with one entry per line:
   - `username:mode:password_hash`
   - mode values: `menu` or `shell`
