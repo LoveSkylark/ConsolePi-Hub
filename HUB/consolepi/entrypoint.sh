@@ -46,6 +46,36 @@ trim_spaces() {
   printf '%s' "${value}"
 }
 
+apply_consolepi_rshell_empty_fix() {
+  local menu_py="${CONSOLEPI_HOME}/src/pypkg/consolepi/menu.py"
+
+  [[ -f "${menu_py}" ]] || return 0
+
+  python3 - "${menu_py}" <<'PY'
+import pathlib
+import sys
+
+menu_path = pathlib.Path(sys.argv[1])
+src = menu_path.read_text()
+
+needle = "item = min([item for sublist in items for item in sublist])"
+replacement = (
+    "flat_items = [item for sublist in items for item in sublist]\\n"
+    "        if not flat_items:\\n"
+    "            return menu_actions\\n"
+    "        item = min(flat_items)"
+)
+
+if "flat_items = [item for sublist in items for item in sublist]" in src:
+    sys.exit(0)
+
+if needle not in src:
+    sys.exit(0)
+
+menu_path.write_text(src.replace(needle, replacement, 1))
+PY
+}
+
 provision_user_from_file() {
   local user="$1"
   local login_mode="$2"
@@ -86,6 +116,9 @@ mkdir -p "${RUNTIME_DIR}" /data/ssh
 install -d -m 0777 /var/log/ConsolePi
 touch /var/log/ConsolePi/consolepi.log
 chmod 0666 /var/log/ConsolePi/consolepi.log
+
+# Workaround for upstream ConsolePi bug when Remote Shell menu has no entries.
+apply_consolepi_rshell_empty_fix
 
 # Seed runtime config from example only if one does not exist yet.
 if [[ ! -f "${RUNTIME_DIR}/ConsolePi.yaml" ]]; then
