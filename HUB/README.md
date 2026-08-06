@@ -18,10 +18,10 @@ chmod +x deploy-hub.sh
 
 Optional flags:
 
-- `--with-consolepi`: starts the `consolepi` profile service too
+- `--without-consolepi`: skip starting the `consolepi` profile service
 - `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
 
-The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard services.
+The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard plus ConsolePi services.
 
 Re-run behavior:
 

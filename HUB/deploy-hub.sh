@@ -8,7 +8,7 @@ TRUSTED_EXAMPLE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.conf
 UNTRUSTED_EXAMPLE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.conf.example"
 TRUSTED_ACTIVE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.conf"
 UNTRUSTED_ACTIVE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.conf"
-WITH_CONSOLEPI="false"
+WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
@@ -201,7 +201,7 @@ usage() {
 Usage: ./deploy-hub.sh [options]
 
 Options:
-  --with-consolepi   Also start the consolepi profile service
+  --without-consolepi Skip starting the consolepi profile service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --help             Show this help
 EOF
@@ -209,8 +209,8 @@ EOF
 
 for arg in "$@"; do
   case "$arg" in
-    --with-consolepi)
-      WITH_CONSOLEPI="true"
+    --without-consolepi)
+      WITH_CONSOLEPI="false"
       ;;
     --refresh-configs)
       REFRESH_CONFIGS="true"
@@ -297,5 +297,5 @@ echo "HUB deployment complete."
 if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
   echo "ConsolePi service started."
 else
-  echo "ConsolePi service not started. Re-run with --with-consolepi to start it."
+  echo "ConsolePi service skipped by request (--without-consolepi)."
 fi
