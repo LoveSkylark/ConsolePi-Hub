@@ -117,6 +117,28 @@ WireGuard peers can reach ConsolePi over the hub WireGuard IP using SSH:
 
 Place your admin public key in `./consolepi/data/ssh/authorized_keys` before starting the container.
 
+Optional multi-user password access:
+
+- Enable in `.env`: `CONSOLEPI_SSH_PASSWORD_AUTH=true`
+- Keep a tight external allow-list in `MGMT_SSH_ALLOW_CIDRS`
+- Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (space-separated)
+- Create `./consolepi/data/ssh/users.conf` with one entry per line:
+  - `username:password_hash`
+- Generate password hashes with:
+
+```bash
+openssl passwd -6 'StrongPasswordHere'
+```
+
+- Example `users.conf`:
+
+```text
+opsadmin:$6$rounds=656000$abc...$xyz...
+nocadmin:$6$rounds=656000$def...$uvw...
+```
+
+Re-deploy after changes so users and auth policy are applied.
+
 SSH access is profile-restricted at interface level:
 
 - trusted interface (`TRUSTED_SSH_INTERFACE`) is allowed

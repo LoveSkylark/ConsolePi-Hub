@@ -6,6 +6,51 @@ RUNTIME_DIR="/data/runtime"
 TRUSTED_SSH_INTERFACE="${TRUSTED_SSH_INTERFACE:-wg0}"
 UNTRUSTED_SSH_INTERFACE="${UNTRUSTED_SSH_INTERFACE:-}"
 MGMT_SSH_ALLOW_CIDRS="${MGMT_SSH_ALLOW_CIDRS:-}"
+CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
+CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
+CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
+
+add_allow_user() {
+  local user="$1"
+  case " ${CONSOLEPI_ALLOW_USERS} " in
+    *" ${user} "*)
+      ;;
+    *)
+      CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS} ${user}"
+      ;;
+  esac
+}
+
+trim_spaces() {
+  local value="$1"
+  value="${value#${value%%[![:space:]]*}}"
+  value="${value%${value##*[![:space:]]}}"
+  printf '%s' "${value}"
+}
+
+provision_user_from_file() {
+  local user="$1"
+  local password_hash="$2"
+
+  [[ "${user}" =~ ^[a-z_][a-z0-9_-]*$ ]] || {
+    echo "Skipping invalid username in ${CONSOLEPI_USERS_FILE}: ${user}" >&2
+    return 0
+  }
+
+  [[ -n "${password_hash}" ]] || {
+    echo "Skipping ${user}: empty password hash in ${CONSOLEPI_USERS_FILE}" >&2
+    return 0
+  }
+
+  if id "${user}" >/dev/null 2>&1; then
+    usermod -p "${password_hash}" "${user}"
+  else
+    useradd -m -s /bin/bash -p "${password_hash}" "${user}"
+  fi
+
+  install -d -m 700 -o "${user}" -g "${user}" "/home/${user}/.ssh"
+  add_allow_user "${user}"
+}
 
 mkdir -p "${RUNTIME_DIR}" /data/ssh
 
@@ -31,12 +76,33 @@ if [[ -d /data/ssh ]]; then
   fi
 fi
 
+if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
+  while IFS=':' read -r raw_user raw_hash; do
+    raw_user="$(trim_spaces "${raw_user}")"
+    raw_hash="$(trim_spaces "${raw_hash}")"
+
+    [[ -n "${raw_user}" ]] || continue
+    [[ "${raw_user}" == \#* ]] && continue
+    provision_user_from_file "${raw_user}" "${raw_hash}"
+  done < "${CONSOLEPI_USERS_FILE}"
+fi
+
+CONSOLEPI_ALLOW_USERS="$(trim_spaces "${CONSOLEPI_ALLOW_USERS}")"
+
 # Harden SSH daemon for key-only access to the consolepi user.
 if [[ -f /etc/ssh/sshd_config ]]; then
-  grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
+  if [[ "${CONSOLEPI_SSH_PASSWORD_AUTH}" == "true" ]]; then
+    grep -q '^PasswordAuthentication yes' /etc/ssh/sshd_config || echo 'PasswordAuthentication yes' >> /etc/ssh/sshd_config
+  else
+    grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
+  fi
   grep -q '^PermitRootLogin no' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config
   grep -q '^PubkeyAuthentication yes' /etc/ssh/sshd_config || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
-  grep -q '^AllowUsers consolepi' /etc/ssh/sshd_config || echo 'AllowUsers consolepi' >> /etc/ssh/sshd_config
+  grep -q '^KbdInteractiveAuthentication no' /etc/ssh/sshd_config || echo 'KbdInteractiveAuthentication no' >> /etc/ssh/sshd_config
+  sed -i '/^AllowUsers /d' /etc/ssh/sshd_config
+  if [[ -n "${CONSOLEPI_ALLOW_USERS}" ]]; then
+    echo "AllowUsers ${CONSOLEPI_ALLOW_USERS}" >> /etc/ssh/sshd_config
+  fi
 fi
 
 mkdir -p /var/run/sshd
