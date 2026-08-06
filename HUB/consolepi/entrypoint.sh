@@ -9,6 +9,7 @@ MGMT_SSH_ALLOW_CIDRS="${MGMT_SSH_ALLOW_CIDRS:-}"
 CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
+CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 
 # Accept comma-separated env input to avoid shell parsing issues in .env files.
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
@@ -52,6 +53,11 @@ provision_user_from_file() {
   fi
 
   install -d -m 700 -o "${user}" -g "${user}" "/home/${user}/.ssh"
+
+  if [[ "${CONSOLEPI_GRANT_SUDO}" == "true" ]]; then
+    usermod -aG sudo "${user}" || true
+  fi
+
   add_allow_user "${user}"
 }
 
@@ -91,6 +97,14 @@ if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
 fi
 
 CONSOLEPI_ALLOW_USERS="$(trim_spaces "${CONSOLEPI_ALLOW_USERS}")"
+
+if [[ "${CONSOLEPI_GRANT_SUDO}" == "true" ]]; then
+  for user in ${CONSOLEPI_ALLOW_USERS}; do
+    if id "${user}" >/dev/null 2>&1; then
+      usermod -aG sudo "${user}" || true
+    fi
+  done
+fi
 
 # Harden SSH daemon for key-only access to the consolepi user.
 if [[ -f /etc/ssh/sshd_config ]]; then

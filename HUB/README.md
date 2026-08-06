@@ -123,6 +123,7 @@ Optional multi-user password access:
 - Keep a tight external allow-list in `MGMT_SSH_ALLOW_CIDRS`
 - Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
   - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
+- Keep `CONSOLEPI_GRANT_SUDO=true` if those users need `consolepi-menu` Python mode
 - Create `./consolepi/data/ssh/users.conf` with one entry per line:
   - `username:password_hash`
 - Generate password hashes with:
