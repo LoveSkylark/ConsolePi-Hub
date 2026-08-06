@@ -124,6 +124,9 @@ Optional multi-user password access:
 - Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
   - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
 - Keep `CONSOLEPI_GRANT_SUDO=true` if those users need `consolepi-menu` Python mode
+- For users with `mode=menu`, SSH uses `ForceCommand` to enter menu directly
+- Set `CONSOLEPI_MENU_EXIT_ACTION=logout` (default) to close session when menu exits
+- Set `CONSOLEPI_MENU_EXIT_ACTION=shell` only if you want menu users to fall back to shell
 - Create `./consolepi/data/ssh/users.conf` with one entry per line:
   - `username:mode:password_hash`
   - mode values: `menu` or `shell`
@@ -142,8 +145,6 @@ nocadmin:shell:$6$rounds=656000$def...$uvw...
 ```
 
 Re-deploy after changes so users and auth policy are applied.
-
-To bypass auto-menu for one session, set `CONSOLEPI_NO_AUTO_MENU=1` before login command context or use a non-interactive SSH command.
 
 SSH access is profile-restricted at interface level:
 

@@ -11,6 +11,7 @@ CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 CONSOLEPI_MENU_USERS=""
+CONSOLEPI_MENU_EXIT_ACTION="${CONSOLEPI_MENU_EXIT_ACTION:-logout}"
 
 # Accept comma-separated env input to avoid shell parsing issues in .env files.
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
@@ -211,9 +212,19 @@ if command -v consolepi-menu >/dev/null 2>&1; then
   consolepi-menu
 fi
 
-# If menu exits, drop user to a login shell without relaunch loop.
-export CONSOLEPI_NO_AUTO_MENU=1
-exec /bin/bash -l
+case "${CONSOLEPI_MENU_EXIT_ACTION:-logout}" in
+  shell)
+    # Optional fallback behavior for troubleshooting.
+    export CONSOLEPI_NO_AUTO_MENU=1
+    exec /bin/bash -l
+    ;;
+  logout|exit|disconnect)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
 EOF
 chmod 755 /usr/local/bin/consolepi-menu-login.sh
 
