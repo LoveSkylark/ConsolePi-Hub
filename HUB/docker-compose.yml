@@ -48,8 +48,6 @@ services:
       dockerfile: Dockerfile
     image: connectpi/consolepi-hub:bookworm
     container_name: connectpi-consolepi
-    profiles:
-      - consolepi
     depends_on:
       - wireguard-trusted
       - wireguard-untrusted

@@ -5,7 +5,7 @@ This folder contains a Docker Compose based HUB baseline:
 - WireGuard runs as two dedicated profile containers.
 - Trusted WireGuard profile: can access ConsolePi.
 - Untrusted WireGuard profile: blocked from ConsolePi SSH.
-- ConsolePi is a local image build based on Debian 12 Bookworm and is opt-in via profile.
+- ConsolePi is a local image build based on Debian 12 Bookworm.
 
 ## 1) Prepare files
 
@@ -18,7 +18,7 @@ chmod +x deploy-hub.sh
 
 Optional flags:
 
-- `--without-consolepi`: skip starting the `consolepi` profile service
+- `--without-consolepi`: skip starting the `consolepi` service
 - `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
 
 The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard plus ConsolePi services.
@@ -88,7 +88,7 @@ docker compose logs --tail=100 wireguard-untrusted
 
 You should see interface startup and peer activity once spokes connect.
 
-## 3a) Build and run ConsolePi container (optional)
+## 3a) Build and run ConsolePi container
 
 Build the image:
 
@@ -96,10 +96,10 @@ Build the image:
 docker compose build consolepi
 ```
 
-Start the service with its profile:
+Start the service:
 
 ```bash
-docker compose --profile consolepi up -d consolepi
+docker compose up -d consolepi
 ```
 
 Open an interactive shell and run ConsolePi commands:
@@ -186,7 +186,7 @@ You can also use the HUB registration helper non-interactively:
 
 ## 5) Important runtime notes
 
-- The `consolepi` service is intentionally disabled by default via the `consolepi` profile.
+- The `consolepi` service is included in normal compose lifecycle operations.
 - It uses `network_mode: service:wireguard-trusted` so ConsolePi is attached to the trusted VPN namespace.
 - Runtime data is persisted under `./consolepi/data`.
 - Inbound SSH for ConsolePi is provided by the ConsolePi container itself and is reachable through the shared WireGuard namespace.

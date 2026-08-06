@@ -201,7 +201,7 @@ usage() {
 Usage: ./deploy-hub.sh [options]
 
 Options:
-  --without-consolepi Skip starting the consolepi profile service
+  --without-consolepi Skip starting the consolepi service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --help             Show this help
 EOF
@@ -286,7 +286,7 @@ fi
 ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d wireguard-trusted wireguard-untrusted
 
 if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
-  ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" --profile consolepi up -d consolepi
+  ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d consolepi
 fi
 
 ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" ps
