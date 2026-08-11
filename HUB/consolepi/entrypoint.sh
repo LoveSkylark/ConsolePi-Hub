@@ -60,9 +60,9 @@ src = menu_path.read_text()
 
 needle = "item = min([item for sublist in items for item in sublist])"
 replacement = (
-    "flat_items = [item for sublist in items for item in sublist]\\n"
-    "        if not flat_items:\\n"
-    "            return menu_actions\\n"
+  "flat_items = [item for sublist in items for item in sublist]\n"
+  "        if not flat_items:\n"
+  "            return menu_actions\n"
     "        item = min(flat_items)"
 )
 
