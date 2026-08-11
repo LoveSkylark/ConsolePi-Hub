@@ -14,6 +14,7 @@ UNTRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg
 UNTRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.publickey"
 CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/data/runtime"
 CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
+CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
@@ -304,21 +305,19 @@ Options:
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --new-keys         Rotate HUB trusted and untrusted keypairs after warning prompt
   --get-keys         Print current HUB trusted and untrusted public keys and exit
-  --get-hosts        Print ConsolePi HOSTS YAML from /etc/hosts (SSH only, no pinned username) and exit
+  --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
   --help             Show this help
 EOF
 }
 
-print_consolepi_hosts_from_etc_hosts() {
+generate_consolepi_hosts_entries() {
+  local output_file="$1"
   local hosts_file="/etc/hosts"
 
   if [[ ! -r "${hosts_file}" ]]; then
     echo "Unable to read ${hosts_file}" >&2
     exit 1
   fi
-
-  echo "# Paste this block into ConsolePi.yaml under HOSTS:"
-  echo "HOSTS:"
 
   awk '
     /^[[:space:]]*#/ || NF < 2 { next }
@@ -329,13 +328,85 @@ print_consolepi_hosts_from_etc_hosts() {
       ip = $1
       host = $2
       gsub(/[^A-Za-z0-9_.()-]/, "_", host)
+      if (host in seen) {
+        next
+      }
+      seen[host] = 1
       print "  " host ":"
       print "    address: " ip ":22"
       print "    method: ssh"
       print "    show_in_main: false"
       print "    group: Imported"
     }
-  ' "${hosts_file}"
+  ' "${hosts_file}" > "${output_file}"
+
+  if [[ ! -s "${output_file}" ]]; then
+    printf '  {}\n' > "${output_file}"
+  fi
+}
+
+update_consolepi_hosts_from_etc_hosts() {
+  local config_file="${CONSOLEPI_RUNTIME_CONFIG_FILE}"
+  local tmp_entries
+  local tmp_output
+
+  if [[ ! -f "${config_file}" ]]; then
+    echo "Missing ${config_file}" >&2
+    exit 1
+  fi
+
+  cp "${config_file}" "${config_file}.bak.${TIMESTAMP}"
+
+  tmp_entries="$(mktemp)"
+  tmp_output="$(mktemp)"
+
+  generate_consolepi_hosts_entries "${tmp_entries}"
+
+  awk -v entries_file="${tmp_entries}" '
+    BEGIN {
+      in_hosts = 0
+      hosts_replaced = 0
+    }
+
+    {
+      if (!in_hosts && $0 ~ /^HOSTS:[[:space:]]*$/) {
+        print "HOSTS:"
+        while ((getline entry < entries_file) > 0) {
+          print entry
+        }
+        close(entries_file)
+        in_hosts = 1
+        hosts_replaced = 1
+        next
+      }
+
+      if (in_hosts) {
+        if ($0 ~ /^[A-Z][A-Z0-9_]*:[[:space:]]*$/) {
+          in_hosts = 0
+          print
+        }
+        next
+      }
+
+      print
+    }
+
+    END {
+      if (!hosts_replaced) {
+        print "HOSTS:"
+        while ((getline entry < entries_file) > 0) {
+          print entry
+        }
+        close(entries_file)
+      }
+    }
+  ' "${config_file}" > "${tmp_output}"
+
+  mv "${tmp_output}" "${config_file}"
+  rm -f "${tmp_entries}"
+
+  echo "Updated HOSTS in ${config_file}"
+  echo "Backup saved to ${config_file}.bak.${TIMESTAMP}"
 }
 
 seed_consolepi_remote_cache() {
@@ -452,7 +523,7 @@ if [[ "${PRINT_KEYS}" == "true" ]]; then
 fi
 
 if [[ "${PRINT_HOSTS}" == "true" ]]; then
-  print_consolepi_hosts_from_etc_hosts
+  update_consolepi_hosts_from_etc_hosts
   exit 0
 fi
 
