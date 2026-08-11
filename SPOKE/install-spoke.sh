@@ -273,6 +273,12 @@ printf '%s\n' "${SPOKE_PRIVATE_KEY}" > "${SPOKE_PRIVATE_KEY_FILE}"
 printf '%s\n' "${SPOKE_PUBLIC_KEY}" > "${SPOKE_PUBLIC_KEY_FILE}"
 chmod 600 "${SPOKE_PRIVATE_KEY_FILE}" "${SPOKE_PUBLIC_KEY_FILE}"
 
+if [[ "${GENERATE_PRIVATE_KEY}" == "true" ]]; then
+  echo "Generated new spoke keypair."
+  echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
+  echo "Store this on the HUB for the matching peer slot."
+fi
+
 if [[ -f "${ENV_FILE}" ]]; then
   cp "${ENV_FILE}" "${ENV_FILE}.bak.${TIMESTAMP}"
 fi
@@ -296,7 +302,10 @@ if [[ -f /etc/wireguard/wg0.conf ]]; then
   ${SUDO} cp /etc/wireguard/wg0.conf "/etc/wireguard/wg0.conf.bak.${TIMESTAMP}"
 fi
 ${SUDO} cp "${SCRIPT_DIR}/rendered/wg0.conf" /etc/wireguard/wg0.conf
+${SUDO} cp "${SPOKE_PRIVATE_KEY_FILE}" /etc/wireguard/wg0.privatekey
+${SUDO} cp "${SPOKE_PUBLIC_KEY_FILE}" /etc/wireguard/wg0.publickey
 ${SUDO} chmod 600 /etc/wireguard/wg0.conf
+${SUDO} chmod 600 /etc/wireguard/wg0.privatekey /etc/wireguard/wg0.publickey
 
 ${SUDO} systemctl enable wg-quick@wg0
 if ${SUDO} systemctl is-active --quiet wg-quick@wg0; then
@@ -319,6 +328,7 @@ echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
 echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
 echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
 echo "WireGuard config: /etc/wireguard/wg0.conf"
+echo "Deployed public key file: /etc/wireguard/wg0.publickey"
 echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
 echo
 echo "Next check: ${SUDO} wg show"
