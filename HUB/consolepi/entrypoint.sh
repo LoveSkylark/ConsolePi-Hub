@@ -53,26 +53,30 @@ apply_consolepi_rshell_empty_fix() {
 
   python3 - "${menu_py}" <<'PY'
 import pathlib
+import re
 import sys
 
 menu_path = pathlib.Path(sys.argv[1])
 src = menu_path.read_text()
 
-needle = "item = min([item for sublist in items for item in sublist])"
+pattern = re.compile(
+  r"^(?P<indent>[ \t]*)item = min\(\[item for sublist in items for item in sublist\]\)$",
+  re.M,
+)
 replacement = (
-    "        flat_items = [item for sublist in items for item in sublist]\n"
-    "        if not flat_items:\n"
-    "            return menu_actions\n"
-    "        item = min(flat_items)"
+  r"\g<indent>flat_items = [item for sublist in items for item in sublist]\n"
+  r"\g<indent>if not flat_items:\n"
+  r"\g<indent>    return menu_actions\n"
+  r"\g<indent>item = min(flat_items)"
 )
 
 if "flat_items = [item for sublist in items for item in sublist]" in src:
     sys.exit(0)
 
-if needle not in src:
+if not pattern.search(src):
     sys.exit(0)
 
-menu_path.write_text(src.replace(needle, replacement, 1))
+menu_path.write_text(pattern.sub(replacement, src, count=1))
 PY
 }
 
