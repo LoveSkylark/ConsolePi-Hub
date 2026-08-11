@@ -325,7 +325,7 @@ generate_consolepi_hosts_entries() {
   awk '
     /^[[:space:]]*#/ || NF < 2 { next }
     $1 ~ /:/ { next }
-    $1 ~ /^(127\.0\.0\.1|0\.0\.0\.0)$/ { next }
+    $1 ~ /^(127\.|0\.0\.0\.0)$/ { next }
     tolower($2) ~ /^localhost(\.|$)/ { next }
     {
       ip = $1
