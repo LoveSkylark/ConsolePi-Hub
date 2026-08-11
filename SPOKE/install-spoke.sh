@@ -8,6 +8,34 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 REPO_URL="${CONSOLEPI_HUB_REPO_URL:-https://github.com/LoveSkylark/ConsolePi-Hub}"
 REPO_REF="${CONSOLEPI_HUB_REPO_REF:-main}"
 RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
+NEW_KEY_REQUESTED="false"
+
+usage() {
+  cat <<EOF
+Usage: ./install-spoke.sh [options]
+
+Options:
+  --new-key  Generate a new spoke private key after warning prompt
+  --help     Show this help
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --new-key)
+      NEW_KEY_REQUESTED="true"
+      ;;
+    --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: ${arg}" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 SUDO=""
 if [[ ${EUID} -ne 0 ]]; then
@@ -202,11 +230,22 @@ HUB_PUBLIC_KEY="$(prompt_required "Hub public key")"
 PERSISTENT_KEEPALIVE="$(prompt_port "Persistent keepalive seconds" "25")"
 
 GENERATE_PRIVATE_KEY="false"
-if prompt_yes_no "Generate a new WireGuard private key for this spoke?" "y"; then
+if [[ "${NEW_KEY_REQUESTED}" == "true" ]]; then
+  echo "WARNING: --new-key will rotate the spoke private/public keypair."
+  echo "You must update the HUB peer public key entry for this spoke or the tunnel will fail."
+  if ! prompt_yes_no "Continue with new spoke key generation?" "n"; then
+    echo "Spoke key rotation cancelled."
+    exit 1
+  fi
   GENERATE_PRIVATE_KEY="true"
   SPOKE_PRIVATE_KEY=""
 else
-  SPOKE_PRIVATE_KEY="$(prompt_required "Existing spoke private key")"
+  if prompt_yes_no "Generate a new WireGuard private key for this spoke?" "y"; then
+    GENERATE_PRIVATE_KEY="true"
+    SPOKE_PRIVATE_KEY=""
+  else
+    SPOKE_PRIVATE_KEY="$(prompt_required "Existing spoke private key")"
+  fi
 fi
 
 INSTALL_CONSOLEPI="false"
@@ -226,6 +265,13 @@ if [[ "${GENERATE_PRIVATE_KEY}" == "true" ]]; then
   SPOKE_PRIVATE_KEY="$(wg genkey)"
 fi
 SPOKE_PUBLIC_KEY="$(printf '%s' "${SPOKE_PRIVATE_KEY}" | wg pubkey)"
+
+mkdir -p "${SCRIPT_DIR}/rendered"
+SPOKE_PRIVATE_KEY_FILE="${SCRIPT_DIR}/rendered/spoke.privatekey"
+SPOKE_PUBLIC_KEY_FILE="${SCRIPT_DIR}/rendered/spoke.publickey"
+printf '%s\n' "${SPOKE_PRIVATE_KEY}" > "${SPOKE_PRIVATE_KEY_FILE}"
+printf '%s\n' "${SPOKE_PUBLIC_KEY}" > "${SPOKE_PUBLIC_KEY_FILE}"
+chmod 600 "${SPOKE_PRIVATE_KEY_FILE}" "${SPOKE_PUBLIC_KEY_FILE}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   cp "${ENV_FILE}" "${ENV_FILE}.bak.${TIMESTAMP}"
@@ -270,6 +316,8 @@ fi
 echo
 echo "Install complete."
 echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
+echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
+echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
 echo "WireGuard config: /etc/wireguard/wg0.conf"
 echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
 echo

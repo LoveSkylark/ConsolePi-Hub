@@ -34,6 +34,14 @@ chmod +x install-spoke.sh
 ./install-spoke.sh
 ```
 
+Optional key rotation mode:
+
+```bash
+./install-spoke.sh --new-key
+```
+
+`--new-key` forces a new spoke keypair after an explicit warning prompt.
+
 The installer will:
 
 - ask for the hub endpoint, profile target, tunnel IPs, and hub public key
@@ -42,6 +50,7 @@ The installer will:
 - render `rendered/wg0.conf`
 - install WireGuard and enable `wg-quick@wg0`
 - optionally install ConsolePi and disable mDNS discovery services
+- store the spoke keypair files under `rendered/spoke.privatekey` and `rendered/spoke.publickey`
 
 At the end it prints the spoke public key so you can register it on the HUB if needed.
 
