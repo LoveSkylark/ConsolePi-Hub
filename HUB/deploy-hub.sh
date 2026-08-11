@@ -313,11 +313,14 @@ EOF
 generate_consolepi_hosts_entries() {
   local output_file="$1"
   local hosts_file="/etc/hosts"
+  local tmp_pairs
 
   if [[ ! -r "${hosts_file}" ]]; then
     echo "Unable to read ${hosts_file}" >&2
     exit 1
   fi
+
+  tmp_pairs="$(mktemp)"
 
   awk '
     /^[[:space:]]*#/ || NF < 2 { next }
@@ -332,13 +335,23 @@ generate_consolepi_hosts_entries() {
         next
       }
       seen[host] = 1
+      print host "\t" ip
+    }
+  ' "${hosts_file}" > "${tmp_pairs}"
+
+  sort -f "${tmp_pairs}" | awk -F '\t' '
+    {
+      host = $1
+      ip = $2
       print "  " host ":"
       print "    address: " ip ":22"
       print "    method: ssh"
       print "    show_in_main: false"
       print "    group: Imported"
     }
-  ' "${hosts_file}" > "${output_file}"
+  ' > "${output_file}"
+
+  rm -f "${tmp_pairs}"
 
   if [[ ! -s "${output_file}" ]]; then
     printf '  {}\n' > "${output_file}"
