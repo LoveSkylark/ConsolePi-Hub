@@ -35,17 +35,23 @@ This section is optional for your current policy. Your primary requirement
 (no spoke-to-spoke communication over VPN, hub-only over VPN) is enforced by
 WireGuard routing and hub-side FORWARD drop rules.
 
-Disable discovery/advertising services so spokes do not build peer topology:
+Use API-only mode with fixed WG IPs. Disable discovery/advertising services so spokes do not build peer topology:
 
 ```bash
 sudo systemctl disable --now consolepi-mdnsreg consolepi-mdnsbrowse
+```
+
+Ensure ConsolePi API is enabled so HUB can query this spoke directly:
+
+```bash
+sudo systemctl enable --now consolepi-api
 ```
 
 In ConsolePi config on the spoke:
 
 - Keep `HOSTS:` empty.
 - Do not enable Google Drive/cloud sync.
-- Keep spoke role limited to local console access plus hub-initiated SSH.
+- Keep spoke role limited to local console access plus hub-initiated SSH/API.
 
 ## 4) Preferred setup on the spoke
 

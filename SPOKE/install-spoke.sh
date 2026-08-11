@@ -217,6 +217,21 @@ printf 'consolepi_pass=%q\n' "${CONSOLEPI_PASSWORD}" >> "${CONSOLEPI_PRESEED_FIL
   rm -f "${installer}"
 }
 
+configure_consolepi_remote_services() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "Skipping ConsolePi service management: systemctl not available."
+    return 0
+  fi
+
+  # API must be reachable by the HUB to populate remote adapters.
+  if systemctl list-unit-files | grep -q '^consolepi-api\.service'; then
+    ${SUDO} systemctl enable --now consolepi-api >/dev/null 2>&1 || true
+  fi
+
+  # API-only mode: disable mDNS advertise/browse services.
+  ${SUDO} systemctl disable --now consolepi-mdnsreg consolepi-mdnsbrowse >/dev/null 2>&1 || true
+}
+
 echo "ConnectPi spoke installer"
 echo
 
@@ -276,11 +291,6 @@ INSTALL_CONSOLEPI="false"
 if prompt_yes_no "Install ConsolePi on this box?" "y"; then
   INSTALL_CONSOLEPI="true"
   CONSOLEPI_PASSWORD="$(prompt_required "ConsolePi user password")"
-fi
-
-DISABLE_DISCOVERY="false"
-if prompt_yes_no "Disable ConsolePi mDNS discovery services?" "y"; then
-  DISABLE_DISCOVERY="true"
 fi
 
 ${SUDO} apt-get update
@@ -343,9 +353,7 @@ if [[ "${INSTALL_CONSOLEPI}" == "true" ]]; then
   install_consolepi
 fi
 
-if [[ "${DISABLE_DISCOVERY}" == "true" ]]; then
-  ${SUDO} systemctl disable --now consolepi-mdnsreg consolepi-mdnsbrowse >/dev/null 2>&1 || true
-fi
+configure_consolepi_remote_services
 
 echo
 echo "Install complete."
@@ -356,5 +364,6 @@ echo "ConsolePi preseed file: ${CONSOLEPI_PRESEED_FILE}"
 echo "WireGuard config: /etc/wireguard/wg0.conf"
 echo "Deployed public key file: /etc/wireguard/wg0.publickey"
 echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
+echo "ConsolePi API check: curl -s http://127.0.0.1:5000/api/v1.0/details | head"
 echo
 echo "Next check: ${SUDO} wg show"

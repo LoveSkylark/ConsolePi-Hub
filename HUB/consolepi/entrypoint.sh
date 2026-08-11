@@ -352,14 +352,4 @@ else
   rm -f /etc/profile.d/consolepi-auto-menu.sh
 fi
 
-# Start ConsolePi remote discovery in the background so the HUB can populate
-# remote cache entries without relying on systemd inside the container.
-if [[ -z "${CONSOLEPI_NO_BROWSE:-}" ]]; then
-  if [[ -x /etc/ConsolePi/venv/bin/python3 && -f /etc/ConsolePi/src/mdns_browser.py ]]; then
-    nohup /etc/ConsolePi/venv/bin/python3 /etc/ConsolePi/src/mdns_browser.py >/var/log/ConsolePi/consolepi-browse.log 2>&1 &
-  elif command -v python3 >/dev/null 2>&1 && [[ -f /etc/ConsolePi/src/mdns_browser.py ]]; then
-    nohup python3 /etc/ConsolePi/src/mdns_browser.py >/var/log/ConsolePi/consolepi-browse.log 2>&1 &
-  fi
-fi
-
 exec "$@"

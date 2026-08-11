@@ -49,7 +49,7 @@ The installer will:
 - write `.env`
 - render `rendered/wg0.conf`
 - install WireGuard and enable `wg-quick@wg0`
-- optionally install ConsolePi and disable mDNS discovery services
+- optionally install ConsolePi in API-only mode (enables `consolepi-api`, disables mDNS services)
 - store the spoke keypair files under `rendered/spoke.privatekey` and `rendered/spoke.publickey`
 
 At the end it prints the spoke public key so you can register it on the HUB if needed.
