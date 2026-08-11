@@ -217,19 +217,36 @@ printf 'consolepi_pass=%q\n' "${CONSOLEPI_PASSWORD}" >> "${CONSOLEPI_PRESEED_FIL
   rm -f "${installer}"
 }
 
-configure_consolepi_remote_services() {
+systemd_unit_exists() {
+  local unit_name="$1"
+  systemctl list-unit-files --type=service --no-legend 2>/dev/null | awk '{print $1}' | grep -qx "${unit_name}"
+}
+
+configure_consolepi_api_only_mode() {
   if ! command -v systemctl >/dev/null 2>&1; then
     echo "Skipping ConsolePi service management: systemctl not available."
     return 0
   fi
 
+  local api_unit="consolepi-api.service"
+  local mdns_units=("consolepi-mdnsreg.service" "consolepi-mdnsbrowse.service")
+  local unit
+
   # API must be reachable by the HUB to populate remote adapters.
-  if systemctl list-unit-files | grep -q '^consolepi-api\.service'; then
+  if systemd_unit_exists "${api_unit}"; then
     ${SUDO} systemctl enable --now consolepi-api >/dev/null 2>&1 || true
+    echo "ConsolePi API service enabled."
+  else
+    echo "ConsolePi API service not found; skipping API enable."
   fi
 
   # API-only mode: disable mDNS advertise/browse services.
-  ${SUDO} systemctl disable --now consolepi-mdnsreg consolepi-mdnsbrowse >/dev/null 2>&1 || true
+  for unit in "${mdns_units[@]}"; do
+    if systemd_unit_exists "${unit}"; then
+      ${SUDO} systemctl disable --now "${unit%.service}" >/dev/null 2>&1 || true
+    fi
+  done
+  echo "ConsolePi mDNS services disabled (if present)."
 }
 
 echo "ConnectPi spoke installer"
@@ -353,7 +370,7 @@ if [[ "${INSTALL_CONSOLEPI}" == "true" ]]; then
   install_consolepi
 fi
 
-configure_consolepi_remote_services
+configure_consolepi_api_only_mode
 
 echo
 echo "Install complete."
@@ -365,5 +382,6 @@ echo "WireGuard config: /etc/wireguard/wg0.conf"
 echo "Deployed public key file: /etc/wireguard/wg0.publickey"
 echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
 echo "ConsolePi API check: curl -s http://127.0.0.1:5000/api/v1.0/details | head"
+echo "ConsolePi mode: API-only (mDNS disabled)"
 echo
 echo "Next check: ${SUDO} wg show"

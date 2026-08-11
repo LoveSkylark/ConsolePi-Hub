@@ -18,6 +18,7 @@ WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
 PRINT_KEYS="false"
+PRINT_HOSTS="false"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
 
@@ -303,8 +304,38 @@ Options:
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --new-keys         Rotate HUB trusted and untrusted keypairs after warning prompt
   --get-keys         Print current HUB trusted and untrusted public keys and exit
+  --get-hosts        Print ConsolePi HOSTS YAML from /etc/hosts (SSH only, no pinned username) and exit
   --help             Show this help
 EOF
+}
+
+print_consolepi_hosts_from_etc_hosts() {
+  local hosts_file="/etc/hosts"
+
+  if [[ ! -r "${hosts_file}" ]]; then
+    echo "Unable to read ${hosts_file}" >&2
+    exit 1
+  fi
+
+  echo "# Paste this block into ConsolePi.yaml under HOSTS:"
+  echo "HOSTS:"
+
+  awk '
+    /^[[:space:]]*#/ || NF < 2 { next }
+    $1 ~ /:/ { next }
+    $1 ~ /^(127\.0\.0\.1|0\.0\.0\.0)$/ { next }
+    tolower($2) ~ /^localhost(\.|$)/ { next }
+    {
+      ip = $1
+      host = $2
+      gsub(/[^A-Za-z0-9_.()-]/, "_", host)
+      print "  " host ":"
+      print "    address: " ip ":22"
+      print "    method: ssh"
+      print "    show_in_main: false"
+      print "    group: Imported"
+    }
+  ' "${hosts_file}"
 }
 
 seed_consolepi_remote_cache() {
@@ -400,6 +431,9 @@ for arg in "$@"; do
     --get-keys)
       PRINT_KEYS="true"
       ;;
+    --get-hosts)
+      PRINT_HOSTS="true"
+      ;;
     --help)
       usage
       exit 0
@@ -414,6 +448,11 @@ done
 
 if [[ "${PRINT_KEYS}" == "true" ]]; then
   print_hub_public_keys
+  exit 0
+fi
+
+if [[ "${PRINT_HOSTS}" == "true" ]]; then
+  print_consolepi_hosts_from_etc_hosts
   exit 0
 fi
 
