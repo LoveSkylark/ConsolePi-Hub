@@ -66,8 +66,8 @@ chmod +x wireguard/register-peer.sh
 The helper will:
 
 - ask for trusted or untrusted profile
-- ask for peer label, peer tunnel IP, and peer public key
-- update the matching peer IP list in `.env`
+- ask for peer slot index, optional peer label, and peer public key
+- update the matching `WG_*_PEER_KEY_N` slot in `.env`
 - rerender the example templates
 - append the live peer stanza to the active hub config if it exists
 - otherwise write a ready-to-paste snippet under `wireguard/profiles/`
@@ -75,15 +75,14 @@ The helper will:
 ## 2) Start WireGuard
 
 ```bash
-docker compose up -d wireguard-trusted wireguard-untrusted
+docker compose up -d wireguard-hub
 ```
 
 ## 3) Verify
 
 ```bash
 docker compose ps
-docker compose logs --tail=100 wireguard-trusted
-docker compose logs --tail=100 wireguard-untrusted
+docker compose logs --tail=100 wireguard-hub
 ```
 
 You should see interface startup and peer activity once spokes connect.
@@ -209,8 +208,8 @@ You can also use the HUB registration helper non-interactively:
 ```bash
 ./wireguard/register-peer.sh \
   --profile trusted \
+  --slot 4 \
   --peer-name spoke-b4 \
-  --peer-ip 10.99.99.14 \
   --public-key <SPOKE_PUBLIC_KEY>
 ```
 
@@ -225,7 +224,7 @@ You can also use the HUB registration helper non-interactively:
 ## 5) Important runtime notes
 
 - The `consolepi` service is included in normal compose lifecycle operations.
-- It uses `network_mode: service:wireguard-trusted` so ConsolePi is attached to the trusted VPN namespace.
+- It uses `network_mode: service:wireguard-hub` so ConsolePi shares the namespace that hosts both trusted and untrusted WG interfaces.
 - Runtime data is persisted under `./consolepi/data`.
 - ConsolePi logs are persisted under `./consolepi/data/log` (mounted to `/var/log/ConsolePi` in container).
 - Inbound SSH for ConsolePi is provided by the ConsolePi container itself and is reachable through the shared WireGuard namespace.

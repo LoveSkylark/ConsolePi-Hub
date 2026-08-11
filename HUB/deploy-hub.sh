@@ -396,14 +396,14 @@ if (( trusted_missing > 0 || untrusted_missing > 0 )); then
   echo "Existing peers with real keys will still run; new placeholder peers will not handshake until keys are set." >&2
 fi
 
-${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d wireguard-trusted wireguard-untrusted
+${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d wireguard-hub
 
 if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
-  ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d consolepi
+  ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d --force-recreate consolepi
 fi
 
 ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" ps
-${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" logs --tail=40 wireguard-trusted wireguard-untrusted
+${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" logs --tail=40 wireguard-hub
 
 echo
 echo "HUB deployment complete."

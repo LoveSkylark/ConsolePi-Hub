@@ -183,7 +183,7 @@ cat > "${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf.example" <<EOF
 
 [Interface]
 Address = ${WG_TRUSTED_HUB_IP}/${WG_TRUSTED_PREFIX}
-ListenPort = 51820
+ListenPort = ${WG_TRUSTED_PORT}
 PrivateKey = <HUB_TRUSTED_PRIVATE_KEY>
 SaveConfig = false
 PostUp = iptables -A FORWARD -i %i -o %i -j DROP
@@ -206,7 +206,7 @@ cat > "${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf.example" <<EOF
 
 [Interface]
 Address = ${WG_UNTRUSTED_HUB_IP}/${WG_UNTRUSTED_PREFIX}
-ListenPort = 51820
+ListenPort = ${WG_UNTRUSTED_PORT}
 PrivateKey = <HUB_UNTRUSTED_PRIVATE_KEY>
 SaveConfig = false
 PostUp = iptables -A FORWARD -i %i -o %i -j DROP

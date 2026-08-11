@@ -9,6 +9,9 @@ REPO_URL="${CONSOLEPI_HUB_REPO_URL:-https://github.com/LoveSkylark/ConsolePi-Hub
 REPO_REF="${CONSOLEPI_HUB_REPO_REF:-main}"
 RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
 NEW_KEY_REQUESTED="false"
+CONSOLEPI_PRESEED_DIR="${SCRIPT_DIR}/consolepi-stage"
+CONSOLEPI_PRESEED_FILE="${CONSOLEPI_PRESEED_DIR}/install.conf"
+CONSOLEPI_PASSWORD=""
 
 usage() {
   cat <<EOF
@@ -180,6 +183,27 @@ prompt_port() {
 
 install_consolepi() {
   local installer="/tmp/ConsolePi-install-${TIMESTAMP}.sh"
+  local system_timezone
+  local system_hostname
+
+  system_timezone="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
+  system_timezone="${system_timezone:-UTC}"
+  system_hostname="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo consolepi)"
+
+  mkdir -p "${CONSOLEPI_PRESEED_DIR}"
+  cat > "${CONSOLEPI_PRESEED_FILE}" <<EOF
+hostname=${system_hostname}
+tz=${system_timezone}
+wlan_country=US
+locale=us
+auto_launch=true
+no_users=true
+no_ipv6=true
+do_blue=false
+doapt=true
+dopip=true
+EOF
+printf 'consolepi_pass=%q\n' "${CONSOLEPI_PASSWORD}" >> "${CONSOLEPI_PRESEED_FILE}"
 
   if command -v wget >/dev/null 2>&1; then
     wget -q https://raw.githubusercontent.com/Pack3tL0ss/ConsolePi/master/installer/install.sh -O "${installer}"
@@ -189,7 +213,7 @@ install_consolepi() {
     curl -fsSL https://raw.githubusercontent.com/Pack3tL0ss/ConsolePi/master/installer/install.sh -o "${installer}"
   fi
 
-  ${SUDO} bash "${installer}"
+  ${SUDO} bash "${installer}" -C "${CONSOLEPI_PRESEED_FILE}" --silent -p "${CONSOLEPI_PASSWORD}"
   rm -f "${installer}"
 }
 
@@ -251,6 +275,7 @@ fi
 INSTALL_CONSOLEPI="false"
 if prompt_yes_no "Install ConsolePi on this box?" "y"; then
   INSTALL_CONSOLEPI="true"
+  CONSOLEPI_PASSWORD="$(prompt_required "ConsolePi user password")"
 fi
 
 DISABLE_DISCOVERY="false"
@@ -327,6 +352,7 @@ echo "Install complete."
 echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
 echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
 echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
+echo "ConsolePi preseed file: ${CONSOLEPI_PRESEED_FILE}"
 echo "WireGuard config: /etc/wireguard/wg0.conf"
 echo "Deployed public key file: /etc/wireguard/wg0.publickey"
 echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"

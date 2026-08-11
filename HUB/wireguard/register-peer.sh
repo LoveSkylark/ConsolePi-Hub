@@ -7,13 +7,10 @@ ENV_FILE="${HUB_DIR}/.env"
 RENDER_SCRIPT="${SCRIPT_DIR}/render-profile-configs.sh"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 DRY_RUN="false"
-REPO_URL="${CONSOLEPI_HUB_REPO_URL:-https://github.com/LoveSkylark/ConsolePi-Hub}"
-REPO_REF="${CONSOLEPI_HUB_REPO_REF:-main}"
-RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
 
 PROFILE=""
+SLOT=""
 PEER_NAME=""
-PEER_IP=""
 PUBLIC_KEY=""
 
 usage() {
@@ -22,38 +19,12 @@ Usage: ./wireguard/register-peer.sh [options]
 
 Options:
   --profile trusted|untrusted
-  --peer-name NAME
-  --peer-ip IPv4
+  --slot N                  Peer slot index (N maps to host .(10 + N))
+  --peer-name NAME          Optional label used in comments/snippet filename
   --public-key KEY
   --dry-run
   --help
 EOF
-}
-
-download_repo_file() {
-  local repo_path="$1"
-  local target_path="$2"
-  local url="${RAW_BASE}/${repo_path}"
-
-  mkdir -p "$(dirname "${target_path}")"
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${url}" -o "${target_path}"
-  elif command -v wget >/dev/null 2>&1; then
-    wget -q "${url}" -O "${target_path}"
-  else
-    echo "Need curl or wget to pull missing files from ${REPO_URL}." >&2
-    return 1
-  fi
-}
-
-ensure_repo_asset() {
-  local local_path="$1"
-  local repo_path="$2"
-
-  if [[ ! -f "${local_path}" ]]; then
-    echo "Missing ${local_path}; pulling ${repo_path} from ${REPO_URL}@${REPO_REF}"
-    download_repo_file "${repo_path}" "${local_path}"
-  fi
 }
 
 prompt_required() {
@@ -78,48 +49,16 @@ prompt_required() {
   done
 }
 
-validate_ipv4() {
-  local ip="$1"
-  local octet
-
-  [[ "${ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
-  IFS='.' read -r -a octets <<< "${ip}"
-  for octet in "${octets[@]}"; do
-    ((octet >= 0 && octet <= 255)) || return 1
-  done
-}
-
 validate_public_key() {
   local key="$1"
   [[ "${key}" =~ ^[A-Za-z0-9+/=]+$ ]] || return 1
   ((${#key} >= 40))
 }
 
-csv_contains() {
-  local csv="$1"
-  local needle="$2"
-  local item
-
-  IFS=',' read -r -a items <<< "${csv}"
-  for item in "${items[@]}"; do
-    item="${item//[[:space:]]/}"
-    [[ -n "${item}" ]] || continue
-    if [[ "${item}" == "${needle}" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-append_csv_value() {
-  local csv="$1"
-  local value="$2"
-
-  if [[ -z "${csv//[[:space:]]/}" ]]; then
-    printf '%s' "${value}"
-  else
-    printf '%s,%s' "${csv}" "${value}"
-  fi
+validate_slot() {
+  local slot="$1"
+  [[ "${slot}" =~ ^[0-9]+$ ]] || return 1
+  ((slot >= 1 && slot <= 254))
 }
 
 get_env_value() {
@@ -153,6 +92,54 @@ set_env_value() {
   mv "${tmp_file}" "${ENV_FILE}"
 }
 
+derive_peer_ip_from_subnet() {
+  local subnet="$1"
+  local slot="$2"
+  local base_ip
+  local prefix
+  local o1
+  local o2
+  local o3
+  local o4
+  local host_octet
+
+  base_ip="${subnet%/*}"
+  prefix="${subnet#*/}"
+
+  if [[ "${prefix}" != "24" ]]; then
+    echo "Only /24 subnets are supported for slot-derived peers: ${subnet}" >&2
+    exit 1
+  fi
+
+  IFS='.' read -r o1 o2 o3 o4 <<< "${base_ip}"
+  host_octet=$((10 + slot))
+  if ((host_octet < 11 || host_octet > 254)); then
+    echo "Derived host octet out of range for slot ${slot}: ${host_octet}" >&2
+    exit 1
+  fi
+
+  printf '%s.%s.%s.%s' "${o1}" "${o2}" "${o3}" "${host_octet}"
+}
+
+find_first_empty_slot() {
+  local key_prefix="$1"
+  local slot
+  local key_var
+  local key_val
+
+  for slot in $(seq 1 254); do
+    key_var="${key_prefix}_${slot}"
+    key_val="$(get_env_value "${key_var}")"
+    key_val="${key_val//[[:space:]]/}"
+    if [[ -z "${key_val}" ]]; then
+      printf '%s' "${slot}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 slugify() {
   local value="$1"
   value="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
@@ -168,12 +155,12 @@ while [[ $# -gt 0 ]]; do
       PROFILE="${2:-}"
       shift 2
       ;;
-    --peer-name)
-      PEER_NAME="${2:-}"
+    --slot)
+      SLOT="${2:-}"
       shift 2
       ;;
-    --peer-ip)
-      PEER_IP="${2:-}"
+    --peer-name)
+      PEER_NAME="${2:-}"
       shift 2
       ;;
     --public-key)
@@ -196,16 +183,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ensure_repo_asset "${RENDER_SCRIPT}" "HUB/wireguard/render-profile-configs.sh"
-chmod +x "${RENDER_SCRIPT}"
-
-if [[ ! -f "${ENV_FILE}" && ! -f "${HUB_DIR}/.env.example" ]]; then
-  echo "Missing ${HUB_DIR}/.env.example; pulling from ${REPO_URL}@${REPO_REF}"
-  download_repo_file "HUB/.env.example" "${HUB_DIR}/.env.example" || true
-fi
-
 [[ -f "${ENV_FILE}" ]] || {
   echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
+  exit 1
+}
+
+[[ -f "${RENDER_SCRIPT}" ]] || {
+  echo "Missing ${RENDER_SCRIPT}." >&2
   exit 1
 }
 
@@ -215,20 +199,16 @@ fi
 
 case "${PROFILE}" in
   trusted)
-    PEER_VAR="WG_TRUSTED_PEER_IPS"
-    OTHER_PEER_VAR="WG_UNTRUSTED_PEER_IPS"
+    PEER_KEY_PREFIX="WG_TRUSTED_PEER_KEY"
+    SUBNET_VAR="WG_TRUSTED_SUBNET"
     ACTIVE_CONF="${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf"
-    EXAMPLE_CONF="${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf.example"
     SNIPPET_PREFIX="trusted"
-    SERVICE_NAME="wireguard-trusted"
     ;;
   untrusted)
-    PEER_VAR="WG_UNTRUSTED_PEER_IPS"
-    OTHER_PEER_VAR="WG_TRUSTED_PEER_IPS"
+    PEER_KEY_PREFIX="WG_UNTRUSTED_PEER_KEY"
+    SUBNET_VAR="WG_UNTRUSTED_SUBNET"
     ACTIVE_CONF="${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf"
-    EXAMPLE_CONF="${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf.example"
     SNIPPET_PREFIX="untrusted"
-    SERVICE_NAME="wireguard-untrusted"
     ;;
   *)
     echo "Profile must be trusted or untrusted." >&2
@@ -236,15 +216,16 @@ case "${PROFILE}" in
     ;;
 esac
 
-if [[ -z "${PEER_NAME}" ]]; then
-  PEER_NAME="$(prompt_required "Peer label" "spoke-${PROFILE}")"
+if [[ -z "${SLOT}" ]]; then
+  SLOT="$(find_first_empty_slot "${PEER_KEY_PREFIX}" || true)"
+  if [[ -z "${SLOT}" ]]; then
+    SLOT="$(prompt_required "Peer slot index (1-254)")"
+  else
+    echo "Using first empty slot: ${SLOT}"
+  fi
 fi
-
-if [[ -z "${PEER_IP}" ]]; then
-  PEER_IP="$(prompt_required "Peer tunnel IP")"
-fi
-validate_ipv4 "${PEER_IP}" || {
-  echo "Peer IP must be a valid IPv4 address." >&2
+validate_slot "${SLOT}" || {
+  echo "Slot must be an integer in range 1-254." >&2
   exit 1
 }
 
@@ -256,21 +237,24 @@ validate_public_key "${PUBLIC_KEY}" || {
   exit 1
 }
 
-CURRENT_CSV="$(get_env_value "${PEER_VAR}")"
-OTHER_CSV="$(get_env_value "${OTHER_PEER_VAR}")"
+if [[ -z "${PEER_NAME}" ]]; then
+  PEER_NAME="spoke-${PROFILE}-${SLOT}"
+fi
 
-csv_contains "${OTHER_CSV}" "${PEER_IP}" && {
-  echo "Peer IP ${PEER_IP} already exists in ${OTHER_PEER_VAR}." >&2
+SUBNET_VALUE="$(get_env_value "${SUBNET_VAR}")"
+[[ -n "${SUBNET_VALUE}" ]] || {
+  echo "Missing ${SUBNET_VAR} in ${ENV_FILE}" >&2
   exit 1
 }
+
+PEER_IP="$(derive_peer_ip_from_subnet "${SUBNET_VALUE}" "${SLOT}")"
+PEER_KEY_VAR="${PEER_KEY_PREFIX}_${SLOT}"
+CURRENT_KEY="$(get_env_value "${PEER_KEY_VAR}")"
+CURRENT_KEY="${CURRENT_KEY//[[:space:]]/}"
 
 if [[ -f "${ACTIVE_CONF}" ]]; then
   grep -Fq "PublicKey = ${PUBLIC_KEY}" "${ACTIVE_CONF}" && {
     echo "Public key already exists in ${ACTIVE_CONF}." >&2
-    exit 1
-  }
-  grep -Fq "AllowedIPs = ${PEER_IP}/32" "${ACTIVE_CONF}" && {
-    echo "Peer IP already exists in ${ACTIVE_CONF}." >&2
     exit 1
   }
 fi
@@ -281,24 +265,18 @@ PublicKey = ${PUBLIC_KEY}
 AllowedIPs = ${PEER_IP}/32
 PersistentKeepalive = 25"
 
-if csv_contains "${CURRENT_CSV}" "${PEER_IP}"; then
-  UPDATED_CSV="${CURRENT_CSV}"
-else
-  UPDATED_CSV="$(append_csv_value "${CURRENT_CSV}" "${PEER_IP}")"
-fi
-
 SNIPPET_DIR="${SCRIPT_DIR}/profiles"
 SNIPPET_PATH="${SNIPPET_DIR}/peer-${SNIPPET_PREFIX}-$(slugify "${PEER_NAME}").conf.snippet"
 
-echo "Registering ${PROFILE} peer ${PEER_NAME} (${PEER_IP})"
+echo "Registering ${PROFILE} peer ${PEER_NAME} (slot ${SLOT}, ${PEER_IP})"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
-  if [[ "${UPDATED_CSV}" != "${CURRENT_CSV}" ]]; then
-    echo "Would update ${PEER_VAR}=${UPDATED_CSV}"
+  if [[ -n "${CURRENT_KEY}" ]]; then
+    echo "Would replace ${PEER_KEY_VAR} in ${ENV_FILE}"
   else
-    echo "${PEER_VAR} already contains ${PEER_IP}"
+    echo "Would set ${PEER_KEY_VAR} in ${ENV_FILE}"
   fi
-  echo "Would rerender ${EXAMPLE_CONF} via ${RENDER_SCRIPT}"
+  echo "Would rerender templates via ${RENDER_SCRIPT}"
   if [[ -f "${ACTIVE_CONF}" ]]; then
     echo "Would append peer stanza to ${ACTIVE_CONF}"
   else
@@ -311,9 +289,7 @@ fi
 ENV_BACKUP="${ENV_FILE}.bak.${TIMESTAMP}"
 cp "${ENV_FILE}" "${ENV_BACKUP}"
 
-if [[ "${UPDATED_CSV}" != "${CURRENT_CSV}" ]]; then
-  set_env_value "${PEER_VAR}" "${UPDATED_CSV}"
-fi
+set_env_value "${PEER_KEY_VAR}" "${PUBLIC_KEY}"
 
 if ! bash "${RENDER_SCRIPT}"; then
   cp "${ENV_BACKUP}" "${ENV_FILE}"
@@ -326,13 +302,15 @@ printf '%s\n' "${PEER_STANZA}" > "${SNIPPET_PATH}"
 
 if [[ -f "${ACTIVE_CONF}" ]]; then
   cp "${ACTIVE_CONF}" "${ACTIVE_CONF}.bak.${TIMESTAMP}"
-  printf '\n%s\n' "${PEER_STANZA}" >> "${ACTIVE_CONF}"
+  if ! grep -Fq "AllowedIPs = ${PEER_IP}/32" "${ACTIVE_CONF}"; then
+    printf '\n%s\n' "${PEER_STANZA}" >> "${ACTIVE_CONF}"
+  fi
   echo "Updated ${ACTIVE_CONF}"
-  echo "Restart or reload ${SERVICE_NAME} to apply the new peer."
+  echo "Restart or reload wireguard-hub to apply the new peer."
 else
   echo "Active config ${ACTIVE_CONF} does not exist yet."
   echo "Wrote peer snippet to ${SNIPPET_PATH}"
 fi
 
-echo "Updated ${PEER_VAR} in ${ENV_FILE}"
+echo "Updated ${PEER_KEY_VAR} in ${ENV_FILE}"
 echo "Peer snippet saved at ${SNIPPET_PATH}"

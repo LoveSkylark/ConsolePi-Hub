@@ -1,7 +1,7 @@
 services:
-  wireguard-trusted:
+  wireguard-hub:
     image: lscr.io/linuxserver/wireguard:latest
-    container_name: connectpi-wireguard-trusted
+    container_name: connectpi-wireguard-hub
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
@@ -10,31 +10,12 @@ services:
       - PGID=${PGID:-1000}
       - TZ=${TZ:-UTC}
     ports:
-      - "${WG_TRUSTED_PORT:-51821}:51820/udp"
+      - "${WG_TRUSTED_PORT:-51821}:${WG_TRUSTED_PORT:-51821}/udp"
+      - "${WG_UNTRUSTED_PORT:-51820}:${WG_UNTRUSTED_PORT:-51820}/udp"
       - "${MGMT_SSH_PORT:-2222}:22/tcp"
     volumes:
       - ./wireguard/trusted/config:/config
-      # For Linux hosts that need module visibility from the container.
-      # Uncomment only when deploying on Linux and /lib/modules exists.
-      # - /lib/modules:/lib/modules:ro
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-    restart: unless-stopped
-
-  wireguard-untrusted:
-    image: lscr.io/linuxserver/wireguard:latest
-    container_name: connectpi-wireguard-untrusted
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-UTC}
-    ports:
-      - "${WG_UNTRUSTED_PORT:-51820}:51820/udp"
-    volumes:
-      - ./wireguard/untrusted/config:/config
+      - ./wireguard/untrusted/config/wg_confs/wg-untrusted.conf:/config/wg_confs/wg-untrusted.conf
       # For Linux hosts that need module visibility from the container.
       # Uncomment only when deploying on Linux and /lib/modules exists.
       # - /lib/modules:/lib/modules:ro
@@ -49,9 +30,8 @@ services:
     image: connectpi/consolepi-hub:bookworm
     container_name: connectpi-consolepi
     depends_on:
-      - wireguard-trusted
-      - wireguard-untrusted
-    network_mode: service:wireguard-trusted
+      - wireguard-hub
+    network_mode: service:wireguard-hub
     environment:
       - TRUSTED_SSH_INTERFACE=${TRUSTED_SSH_INTERFACE:-wg-trusted}
       - UNTRUSTED_SSH_INTERFACE=${UNTRUSTED_SSH_INTERFACE:-wg-untrusted}
