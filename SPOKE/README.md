@@ -4,6 +4,27 @@ This folder builds one spoke `wg0.conf` that targets either HUB trusted or HUB u
 
 For end-to-end Pi provisioning (ConsolePi install + WireGuard attach), see [PI_CONSOLEPI_SETUP.md](PI_CONSOLEPI_SETUP.md).
 
+## Start from a fresh Raspberry Pi image
+
+Deploy the base OS image on the spoke Pi itself (microSD or USB boot media), not on the hub host.
+
+1. On your laptop/workstation, open Raspberry Pi Imager.
+2. Choose OS: Raspberry Pi OS Lite (64-bit, Bookworm).
+3. Choose storage: the microSD/USB that will live in the spoke Pi.
+4. In advanced options before writing:
+	- set hostname (example: `connectpi-spoke-01`)
+	- enable SSH
+	- set username/password or SSH public key
+	- set locale/timezone/Wi-Fi if needed
+5. Write image, insert media into the Pi, and boot it.
+6. Log in to the Pi and run base updates:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+After that, continue with the sections below in this README.
+
 ## Quick start on the spoke box
 
 Run the interactive installer from this folder:

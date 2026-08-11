@@ -4,8 +4,10 @@ This guide provisions a spoke Pi as a ConsolePi node and attaches it to the HUB 
 
 ## 1) Base OS prep
 
-1. Install Raspberry Pi OS (Bookworm recommended).
-1. Boot and update:
+1. On a laptop/workstation, use Raspberry Pi Imager to write Raspberry Pi OS Lite (64-bit, Bookworm) to the spoke Pi microSD/USB media.
+1. In imager advanced options, set hostname, enable SSH, and configure credentials (or SSH key), locale, and timezone.
+1. Boot the Pi from that media and log in.
+1. Update packages:
 
 ```bash
 sudo apt update && sudo apt upgrade -y

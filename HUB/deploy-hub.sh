@@ -8,8 +8,14 @@ TRUSTED_EXAMPLE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.conf
 UNTRUSTED_EXAMPLE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.conf.example"
 TRUSTED_ACTIVE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.conf"
 UNTRUSTED_ACTIVE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.conf"
+TRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.privatekey"
+TRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.publickey"
+UNTRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.privatekey"
+UNTRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.publickey"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
+ROTATE_KEYS="false"
+PRINT_KEYS="false"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
 
@@ -80,6 +86,94 @@ ensure_wg_key_tool() {
   fi
 }
 
+store_keypair_files() {
+  local private_key="$1"
+  local private_key_path="$2"
+  local public_key_path="$3"
+  local profile_label="$4"
+  local public_key
+
+  public_key="$(printf '%s' "${private_key}" | wg pubkey)"
+
+  printf '%s\n' "${private_key}" > "${private_key_path}"
+  printf '%s\n' "${public_key}" > "${public_key_path}"
+  chmod 600 "${private_key_path}" "${public_key_path}"
+
+  echo "Stored ${profile_label} HUB private/public key files."
+  echo "  ${private_key_path}"
+  echo "  ${public_key_path}"
+}
+
+rotate_hub_keys() {
+  local trusted_key
+  local untrusted_key
+
+  echo "WARNING: This will rotate HUB trusted and untrusted private keys."
+  echo "All spoke profiles must be updated with the new HUB public keys or tunnels will fail."
+  if ! prompt_yes_no "Continue with key rotation?" "n"; then
+    echo "Key rotation cancelled."
+    exit 1
+  fi
+
+  ensure_wg_key_tool
+
+  trusted_key="$(wg genkey)"
+  untrusted_key="$(wg genkey)"
+
+  set_private_key "${TRUSTED_ACTIVE}" "${trusted_key}"
+  set_private_key "${UNTRUSTED_ACTIVE}" "${untrusted_key}"
+
+  store_keypair_files "${trusted_key}" "${TRUSTED_PRIVATE_KEY_FILE}" "${TRUSTED_PUBLIC_KEY_FILE}" "trusted"
+  store_keypair_files "${untrusted_key}" "${UNTRUSTED_PRIVATE_KEY_FILE}" "${UNTRUSTED_PUBLIC_KEY_FILE}" "untrusted"
+
+  echo "Generated new trusted and untrusted HUB keypairs."
+}
+
+get_public_key_value() {
+  local active_conf_path="$1"
+  local public_key_path="$2"
+  local public_key
+  local private_key
+
+  if [[ -s "${public_key_path}" ]]; then
+    awk 'NF { print; exit }' "${public_key_path}"
+    return 0
+  fi
+
+  [[ -f "${active_conf_path}" ]] || return 1
+
+  private_key="$(extract_private_key "${active_conf_path}")"
+  if [[ -z "${private_key}" || "${private_key}" == "<HUB_TRUSTED_PRIVATE_KEY>" || "${private_key}" == "<HUB_UNTRUSTED_PRIVATE_KEY>" ]]; then
+    return 1
+  fi
+
+  command -v wg >/dev/null 2>&1 || return 2
+
+  public_key="$(printf '%s' "${private_key}" | wg pubkey)"
+  printf '%s\n' "${public_key}"
+}
+
+print_hub_public_keys() {
+  local trusted_public_key=""
+  local untrusted_public_key=""
+
+  trusted_public_key="$(get_public_key_value "${TRUSTED_ACTIVE}" "${TRUSTED_PUBLIC_KEY_FILE}" 2>/dev/null || true)"
+  untrusted_public_key="$(get_public_key_value "${UNTRUSTED_ACTIVE}" "${UNTRUSTED_PUBLIC_KEY_FILE}" 2>/dev/null || true)"
+
+  echo "HUB public keys for spoke assignment:"
+  if [[ -n "${trusted_public_key}" ]]; then
+    echo "TRUSTED:   ${trusted_public_key}"
+  else
+    echo "TRUSTED:   unavailable (run deploy once, or ensure wg is installed to derive from private key)"
+  fi
+
+  if [[ -n "${untrusted_public_key}" ]]; then
+    echo "UNTRUSTED: ${untrusted_public_key}"
+  else
+    echo "UNTRUSTED: unavailable (run deploy once, or ensure wg is installed to derive from private key)"
+  fi
+}
+
 bootstrap_missing_private_keys() {
   local trusted_key
   local untrusted_key
@@ -104,12 +198,14 @@ bootstrap_missing_private_keys() {
   if [[ "${trusted_key}" == "<HUB_TRUSTED_PRIVATE_KEY>" ]]; then
     trusted_key="$(wg genkey)"
     set_private_key "${TRUSTED_ACTIVE}" "${trusted_key}"
+    store_keypair_files "${trusted_key}" "${TRUSTED_PRIVATE_KEY_FILE}" "${TRUSTED_PUBLIC_KEY_FILE}" "trusted"
     echo "Generated trusted HUB private key."
   fi
 
   if [[ "${untrusted_key}" == "<HUB_UNTRUSTED_PRIVATE_KEY>" ]]; then
     untrusted_key="$(wg genkey)"
     set_private_key "${UNTRUSTED_ACTIVE}" "${untrusted_key}"
+    store_keypair_files "${untrusted_key}" "${UNTRUSTED_PRIVATE_KEY_FILE}" "${UNTRUSTED_PUBLIC_KEY_FILE}" "untrusted"
     echo "Generated untrusted HUB private key."
   fi
 }
@@ -203,6 +299,8 @@ Usage: ./deploy-hub.sh [options]
 Options:
   --without-consolepi Skip starting the consolepi service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
+  --new-key          Rotate HUB trusted and untrusted keypairs after warning prompt
+  --get-keys         Print current HUB trusted and untrusted public keys and exit
   --help             Show this help
 EOF
 }
@@ -215,6 +313,12 @@ for arg in "$@"; do
     --refresh-configs)
       REFRESH_CONFIGS="true"
       ;;
+    --new-key)
+      ROTATE_KEYS="true"
+      ;;
+    --get-keys)
+      PRINT_KEYS="true"
+      ;;
     --help)
       usage
       exit 0
@@ -226,6 +330,11 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "${PRINT_KEYS}" == "true" ]]; then
+  print_hub_public_keys
+  exit 0
+fi
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
@@ -261,6 +370,10 @@ fi
 chmod 700 "${SCRIPT_DIR}/wireguard/trusted/config" "${SCRIPT_DIR}/wireguard/trusted/config/wg_confs"
 chmod 700 "${SCRIPT_DIR}/wireguard/untrusted/config" "${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs"
 chmod 600 "${TRUSTED_ACTIVE}" "${UNTRUSTED_ACTIVE}"
+
+if [[ "${ROTATE_KEYS}" == "true" ]]; then
+  rotate_hub_keys
+fi
 
 bootstrap_missing_private_keys
 
