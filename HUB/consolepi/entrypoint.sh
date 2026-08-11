@@ -129,8 +129,14 @@ if [[ ! -f "${RUNTIME_DIR}/ConsolePi.yaml" ]]; then
   cp /etc/ConsolePi.yaml "${RUNTIME_DIR}/ConsolePi.yaml"
 fi
 
+# Seed persistent remote cache store for static/discovered remotes.
+if [[ ! -f "${RUNTIME_DIR}/cloud.json" ]]; then
+  printf '{}\n' > "${RUNTIME_DIR}/cloud.json"
+fi
+
 # Make config available where ConsolePi expects it.
 ln -sf "${RUNTIME_DIR}/ConsolePi.yaml" "${CONSOLEPI_HOME}/ConsolePi.yaml"
+ln -sf "${RUNTIME_DIR}/cloud.json" "${CONSOLEPI_HOME}/cloud.json"
 
 # Optional shared SSH material for hub->spoke auth.
 if [[ -d /data/ssh ]]; then
@@ -344,6 +350,16 @@ EOF
   chmod 755 /etc/profile.d/consolepi-auto-menu.sh
 else
   rm -f /etc/profile.d/consolepi-auto-menu.sh
+fi
+
+# Start ConsolePi remote discovery in the background so the HUB can populate
+# remote cache entries without relying on systemd inside the container.
+if [[ -z "${CONSOLEPI_NO_BROWSE:-}" ]]; then
+  if [[ -x /etc/ConsolePi/venv/bin/python3 && -f /etc/ConsolePi/src/mdns_browser.py ]]; then
+    nohup /etc/ConsolePi/venv/bin/python3 /etc/ConsolePi/src/mdns_browser.py >/var/log/ConsolePi/consolepi-browse.log 2>&1 &
+  elif command -v python3 >/dev/null 2>&1 && [[ -f /etc/ConsolePi/src/mdns_browser.py ]]; then
+    nohup python3 /etc/ConsolePi/src/mdns_browser.py >/var/log/ConsolePi/consolepi-browse.log 2>&1 &
+  fi
 fi
 
 exec "$@"

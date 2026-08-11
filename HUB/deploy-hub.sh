@@ -12,6 +12,8 @@ TRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-tru
 TRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.publickey"
 UNTRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.privatekey"
 UNTRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.publickey"
+CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/data/runtime"
+CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
@@ -305,6 +307,85 @@ Options:
 EOF
 }
 
+seed_consolepi_remote_cache() {
+  mkdir -p "${CONSOLEPI_RUNTIME_DIR}"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+  echo "WARNING: python3 not found on host, skipping static ConsolePi remote cache generation." >&2
+  return 0
+  fi
+
+  CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_CLOUD_CACHE_FILE}" python3 - <<'PY'
+import json
+import os
+import re
+import time
+
+
+def derive_peer_ip(subnet: str, peer_index: int) -> str:
+  base_ip, prefix = subnet.split("/", 1)
+  if prefix != "24":
+    raise ValueError(f"Only /24 subnets are supported for static cache generation: {subnet}")
+  octets = base_ip.split(".")
+  if len(octets) != 4:
+    raise ValueError(f"Invalid subnet: {subnet}")
+  host_octet = 10 + peer_index
+  if not 11 <= host_octet <= 254:
+    raise ValueError(f"Peer index out of supported range: {peer_index}")
+  return f"{octets[0]}.{octets[1]}.{octets[2]}.{host_octet}"
+
+
+def build_entries(prefix: str, profile: str, subnet: str):
+  entries = {}
+  now = int(time.time())
+  pattern = re.compile(rf"^{re.escape(prefix)}_(\d+)$")
+  for key, value in sorted(os.environ.items()):
+    match = pattern.match(key)
+    if not match:
+      continue
+    value = value.strip()
+    if not value:
+      continue
+    idx = int(match.group(1))
+    peer_ip = derive_peer_ip(subnet, idx)
+    host = f"spoke-{profile}-{idx}"
+    entries[host] = {
+      "adapters": {},
+      "api_port": 5000,
+      "interfaces": {
+        profile: {
+          "ip": peer_ip,
+          "isgw": False,
+          "mac": None,
+        }
+      },
+      "last_ip": peer_ip,
+      "rem_ip": peer_ip,
+      "source": "static",
+      "upd_time": now,
+      "user": "consolepi",
+    }
+  return entries
+
+
+cache_file = os.environ["CONSOLEPI_CLOUD_CACHE_FILE"]
+trusted_subnet = os.environ.get("WG_TRUSTED_SUBNET", "")
+untrusted_subnet = os.environ.get("WG_UNTRUSTED_SUBNET", "")
+
+data = {}
+if trusted_subnet:
+  data.update(build_entries("WG_TRUSTED_PEER_KEY", "wg-trusted", trusted_subnet))
+if untrusted_subnet:
+  data.update(build_entries("WG_UNTRUSTED_PEER_KEY", "wg-untrusted", untrusted_subnet))
+
+with open(cache_file, "w", encoding="utf-8") as f:
+  json.dump(data, f, indent=2, sort_keys=True)
+  f.write("\n")
+
+print(f"Wrote static ConsolePi remote cache: {cache_file} ({len(data)} entries)")
+PY
+}
+
 for arg in "$@"; do
   case "$arg" in
     --without-consolepi)
@@ -341,6 +422,11 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
 elif command -v docker-compose >/dev/null 2>&1; then
@@ -352,6 +438,7 @@ fi
 
 chmod +x "${RENDER_SCRIPT}"
 "${RENDER_SCRIPT}"
+seed_consolepi_remote_cache
 
 if [[ "${REFRESH_CONFIGS}" == "true" ]]; then
   if [[ -f "${TRUSTED_ACTIVE}" ]]; then
