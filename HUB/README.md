@@ -192,10 +192,17 @@ Network pools are driven by `.env` values:
 
 - `WG_TRUSTED_SUBNET` (default `10.99.99.0/24`)
 - `WG_UNTRUSTED_SUBNET` (default `10.99.98.0/24`)
-- `WG_TRUSTED_PEER_IPS` (defaults to 3 sample peers)
-- `WG_UNTRUSTED_PEER_IPS` (defaults to 3 sample peers)
+- `WG_TRUSTED_PEER_KEY_N` (trusted peer slot N)
+- `WG_UNTRUSTED_PEER_KEY_N` (untrusted peer slot N)
 
-The render script validates peer lists for empty entries, invalid IPv4 values, and duplicates.
+Peer tunnel IPs are auto-derived from slot index within each /24 subnet:
+
+- slot `1` => host `.11`
+- slot `2` => host `.12`
+- slot `3` => host `.13`
+- formula: host `.(10 + N)`
+
+Only slots with a non-empty `*_PEER_KEY_N` are rendered into HUB and spoke profile templates.
 
 You can also use the HUB registration helper non-interactively:
 

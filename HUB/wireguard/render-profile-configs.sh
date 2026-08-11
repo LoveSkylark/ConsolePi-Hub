@@ -46,63 +46,136 @@ is_valid_ipv4() {
   done
 }
 
-validate_peer_list() {
-  local label="$1"
-  local raw_list="$2"
-  local value="$3"
+validate_public_key() {
+  local key="$1"
+  [[ "${key}" =~ ^[A-Za-z0-9+/=]+$ ]] || return 1
+  ((${#key} >= 40))
+}
 
-  IFS=',' read -r -a in_array <<< "$raw_list"
-  ((${#in_array[@]} > 0)) || {
-    echo "${label} must contain at least one IP" >&2
+derive_peer_ip_from_subnet() {
+  local subnet="$1"
+  local peer_index="$2"
+  local base_ip
+  local prefix
+  local o1
+  local o2
+  local o3
+  local o4
+  local host_octet
+
+  base_ip="${subnet%/*}"
+  prefix="${subnet#*/}"
+
+  if [[ "${prefix}" != "24" ]]; then
+    echo "Only /24 subnets are supported for derived peer IPs: ${subnet}" >&2
+    exit 1
+  fi
+
+  is_valid_ipv4 "${base_ip}" || {
+    echo "Invalid subnet base IP: ${base_ip}" >&2
     exit 1
   }
 
-  local seen=" "
-  local out_array=()
-  for i in "${!in_array[@]}"; do
-    local ip="${in_array[i]//[[:space:]]/}"
-    [[ -n "$ip" ]] || {
-      echo "${label} contains an empty entry" >&2
+  IFS='.' read -r o1 o2 o3 o4 <<< "${base_ip}"
+  host_octet=$((10 + peer_index))
+  if ((host_octet < 11 || host_octet > 254)); then
+    echo "Derived host octet out of range for peer index ${peer_index}: ${host_octet}" >&2
+    exit 1
+  fi
+
+  printf '%s.%s.%s.%s' "${o1}" "${o2}" "${o3}" "${host_octet}"
+}
+
+append_hub_peer_stanzas() {
+  local target_file="$1"
+  local profile_label="$2"
+  local subnet="$3"
+  local key_var_prefix="$4"
+  local profile_kind="$5"
+  local profile_letter="$6"
+  local endpoint_port="$7"
+  local hub_ip="$8"
+  local indexes=()
+  local var_name
+  local peer_index
+  local key_var
+  local peer_key
+  local peer_ip
+  local profile_path
+  local spoke_private_placeholder
+  local key_count=0
+
+  while IFS= read -r var_name; do
+    peer_index="${var_name##*_}"
+    [[ "${peer_index}" =~ ^[0-9]+$ ]] || continue
+    indexes+=("${peer_index}")
+  done < <(compgen -A variable "${key_var_prefix}_")
+
+  if ((${#indexes[@]} == 0)); then
+    return 0
+  fi
+
+  IFS=$'\n' indexes=($(printf '%s\n' "${indexes[@]}" | sort -n -u))
+
+  for peer_index in "${indexes[@]}"; do
+    key_var="${key_var_prefix}_${peer_index}"
+    peer_key="${!key_var:-}"
+    peer_key="${peer_key//[[:space:]]/}"
+    [[ -n "${peer_key}" ]] || continue
+
+    validate_public_key "${peer_key}" || {
+      echo "Invalid public key format in ${key_var}" >&2
       exit 1
     }
-    is_valid_ipv4 "$ip" || {
-      echo "${label} contains invalid IPv4 value: ${ip}" >&2
-      exit 1
-    }
-    case "$seen" in
-      *" ${ip} "*)
-        echo "${label} contains duplicate IP value: ${ip}" >&2
-        exit 1
-        ;;
-    esac
-    seen="${seen}${ip} "
-    out_array+=("$ip")
+
+    peer_ip="$(derive_peer_ip_from_subnet "${subnet}" "${peer_index}")"
+
+    cat >> "${target_file}" <<EOF
+
+[Peer]
+  # ${profile_label} peer ${peer_index}
+PublicKey = ${peer_key}
+AllowedIPs = ${peer_ip}/32
+PersistentKeepalive = 25
+EOF
+
+    spoke_private_placeholder="<${profile_label}_PEER_${peer_index}_PRIVATE_KEY>"
+    profile_path="${SCRIPT_DIR}/profiles/profile-${profile_letter}${peer_index}-${profile_kind}.conf.example"
+    cat > "${profile_path}" <<EOF
+# Profile ${profile_letter}${peer_index} (${profile_label})
+  # Generated from ${key_var}.
+
+[Interface]
+Address = ${peer_ip}/32
+PrivateKey = ${spoke_private_placeholder}
+
+[Peer]
+PublicKey = <HUB_PUBLIC_KEY>
+Endpoint = <PUBLIC_IP_OR_DDNS>:${endpoint_port}
+AllowedIPs = ${hub_ip}/32
+PersistentKeepalive = 25
+EOF
+
+    key_count=$((key_count + 1))
   done
 
-  local joined
-  IFS=',' joined="${out_array[*]}"
-  printf -v "$value" '%s' "$joined"
+  if ((key_count == 0)); then
+    echo "No keys found for ${profile_label} peers (${key_var_prefix}_N)."
+  fi
 }
 
 : "${WG_TRUSTED_SUBNET:?WG_TRUSTED_SUBNET must be set in .env}"
 : "${WG_UNTRUSTED_SUBNET:?WG_UNTRUSTED_SUBNET must be set in .env}"
 : "${WG_TRUSTED_HUB_IP:?WG_TRUSTED_HUB_IP must be set in .env}"
 : "${WG_UNTRUSTED_HUB_IP:?WG_UNTRUSTED_HUB_IP must be set in .env}"
-: "${WG_TRUSTED_PEER_IPS:?WG_TRUSTED_PEER_IPS must be set in .env}"
-: "${WG_UNTRUSTED_PEER_IPS:?WG_UNTRUSTED_PEER_IPS must be set in .env}"
 : "${WG_TRUSTED_PORT:?WG_TRUSTED_PORT must be set in .env}"
 : "${WG_UNTRUSTED_PORT:?WG_UNTRUSTED_PORT must be set in .env}"
 
 WG_TRUSTED_PREFIX="${WG_TRUSTED_SUBNET#*/}"
 WG_UNTRUSTED_PREFIX="${WG_UNTRUSTED_SUBNET#*/}"
 
-validate_peer_list "WG_TRUSTED_PEER_IPS" "${WG_TRUSTED_PEER_IPS}" trusted_ips_csv
-validate_peer_list "WG_UNTRUSTED_PEER_IPS" "${WG_UNTRUSTED_PEER_IPS}" untrusted_ips_csv
-
-IFS=',' read -r -a trusted_ips <<< "${trusted_ips_csv}"
-IFS=',' read -r -a untrusted_ips <<< "${untrusted_ips_csv}"
-
 mkdir -p "${SCRIPT_DIR}/trusted/config/wg_confs" "${SCRIPT_DIR}/untrusted/config/wg_confs" "${SCRIPT_DIR}/profiles"
+rm -f "${SCRIPT_DIR}/profiles"/profile-A*-untrusted.conf.example "${SCRIPT_DIR}/profiles"/profile-B*-trusted.conf.example
 
 cat > "${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf.example" <<EOF
 # Trusted profile tunnel
@@ -117,19 +190,15 @@ PostUp = iptables -A FORWARD -i %i -o %i -j DROP
 PostDown = iptables -D FORWARD -i %i -o %i -j DROP
 EOF
 
-for i in "${!trusted_ips[@]}"; do
-  peer_num=$((i + 1))
-  peer_ip="${trusted_ips[i]//[[:space:]]/}"
-  [[ -z "${peer_ip}" ]] && continue
-  cat >> "${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf.example" <<EOF
-
-[Peer]
-# Trusted peer ${peer_num}
-PublicKey = <TRUSTED_PEER_${peer_num}_PUBLIC_KEY>
-AllowedIPs = ${peer_ip}/32
-PersistentKeepalive = 25
-EOF
-done
+append_hub_peer_stanzas \
+  "${SCRIPT_DIR}/trusted/config/wg_confs/wg-trusted.conf.example" \
+  "TRUSTED" \
+  "${WG_TRUSTED_SUBNET}" \
+  "WG_TRUSTED_PEER_KEY" \
+  "trusted" \
+  "B" \
+  "${WG_TRUSTED_PORT}" \
+  "${WG_TRUSTED_HUB_IP}"
 
 cat > "${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf.example" <<EOF
 # Untrusted profile tunnel
@@ -144,60 +213,14 @@ PostUp = iptables -A FORWARD -i %i -o %i -j DROP
 PostDown = iptables -D FORWARD -i %i -o %i -j DROP
 EOF
 
-for i in "${!untrusted_ips[@]}"; do
-  peer_num=$((i + 1))
-  peer_ip="${untrusted_ips[i]//[[:space:]]/}"
-  [[ -z "${peer_ip}" ]] && continue
-  cat >> "${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf.example" <<EOF
-
-[Peer]
-# Untrusted peer ${peer_num}
-PublicKey = <UNTRUSTED_PEER_${peer_num}_PUBLIC_KEY>
-AllowedIPs = ${peer_ip}/32
-PersistentKeepalive = 25
-EOF
-done
-
-for i in "${!untrusted_ips[@]}"; do
-  peer_num=$((i + 1))
-  peer_ip="${untrusted_ips[i]//[[:space:]]/}"
-  [[ -z "${peer_ip}" ]] && continue
-  cat > "${SCRIPT_DIR}/profiles/profile-A${peer_num}-untrusted.conf.example" <<EOF
-# Profile A${peer_num} (UNTRUSTED)
-# Use this for peers that should form VPN connectivity but NOT access ConsolePi SSH.
-
-[Interface]
-Address = ${peer_ip}/32
-PrivateKey = <UNTRUSTED_PEER_${peer_num}_PRIVATE_KEY>
-
-[Peer]
-PublicKey = <HUB_PUBLIC_KEY>
-Endpoint = <PUBLIC_IP_OR_DDNS>:${WG_UNTRUSTED_PORT}
-AllowedIPs = ${WG_UNTRUSTED_HUB_IP}/32
-PersistentKeepalive = 25
-EOF
-done
-
-for i in "${!trusted_ips[@]}"; do
-  peer_num=$((i + 1))
-  peer_ip="${trusted_ips[i]//[[:space:]]/}"
-  [[ -z "${peer_ip}" ]] && continue
-  cat > "${SCRIPT_DIR}/profiles/profile-B${peer_num}-trusted.conf.example" <<EOF
-# Profile B${peer_num} (TRUSTED)
-# Use this for peers that are allowed to SSH into ConsolePi over the tunnel.
-
-[Interface]
-Address = ${peer_ip}/32
-PrivateKey = <TRUSTED_PEER_${peer_num}_PRIVATE_KEY>
-
-[Peer]
-PublicKey = <HUB_PUBLIC_KEY>
-Endpoint = <PUBLIC_IP_OR_DDNS>:${WG_TRUSTED_PORT}
-AllowedIPs = ${WG_TRUSTED_HUB_IP}/32
-PersistentKeepalive = 25
-EOF
-done
-
-rm -f "${SCRIPT_DIR}/profiles/profile-A-untrusted.conf.example" "${SCRIPT_DIR}/profiles/profile-B-trusted.conf.example"
+append_hub_peer_stanzas \
+  "${SCRIPT_DIR}/untrusted/config/wg_confs/wg-untrusted.conf.example" \
+  "UNTRUSTED" \
+  "${WG_UNTRUSTED_SUBNET}" \
+  "WG_UNTRUSTED_PEER_KEY" \
+  "untrusted" \
+  "A" \
+  "${WG_UNTRUSTED_PORT}" \
+  "${WG_UNTRUSTED_HUB_IP}"
 
 echo "Rendered WireGuard profile templates from ${ENV_FILE}."

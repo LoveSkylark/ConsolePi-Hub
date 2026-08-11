@@ -299,7 +299,7 @@ Usage: ./deploy-hub.sh [options]
 Options:
   --without-consolepi Skip starting the consolepi service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
-  --new-key          Rotate HUB trusted and untrusted keypairs after warning prompt
+  --new-keys         Rotate HUB trusted and untrusted keypairs after warning prompt
   --get-keys         Print current HUB trusted and untrusted public keys and exit
   --help             Show this help
 EOF
@@ -313,7 +313,7 @@ for arg in "$@"; do
     --refresh-configs)
       REFRESH_CONFIGS="true"
       ;;
-    --new-key)
+    --new-keys)
       ROTATE_KEYS="true"
       ;;
     --get-keys)
