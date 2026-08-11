@@ -343,10 +343,14 @@ generate_consolepi_hosts_entries() {
     {
       host = $1
       ip = $2
+      show_in_main = "false"
+      if (tolower(host) ~ /^(dc1-|dc2-)/) {
+        show_in_main = "true"
+      }
       print "  " host ":"
       print "    address: " ip ":22"
       print "    method: ssh"
-      print "    show_in_main: false"
+      print "    show_in_main: " show_in_main
       print "    group: Imported"
     }
   ' > "${output_file}"
