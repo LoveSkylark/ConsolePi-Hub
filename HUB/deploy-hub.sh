@@ -138,13 +138,14 @@ rotate_hub_keys() {
   local rotate_trusted="false"
   local rotate_untrusted="false"
 
-  echo "WARNING: Rotating a HUB key requires updating all matching spoke profiles with the new HUB public key."
+  echo "WARNING: HUB KEY ROTATION"
+  echo "Rotating a HUB key requires updating all matching spoke profiles with the new HUB public key."
 
-  if prompt_yes_no "Rotate trusted HUB key?" "n"; then
+  if prompt_yes_no "Rotate TRUSTED HUB key?" "n"; then
     rotate_trusted="true"
   fi
 
-  if prompt_yes_no "Rotate untrusted HUB key?" "n"; then
+  if prompt_yes_no "Rotate UNTRUSTED HUB key?" "n"; then
     rotate_untrusted="true"
   fi
 
