@@ -135,26 +135,39 @@ store_keypair_files() {
 rotate_hub_keys() {
   local trusted_key
   local untrusted_key
+  local rotate_trusted="false"
+  local rotate_untrusted="false"
 
-  echo "WARNING: This will rotate HUB trusted and untrusted private keys."
-  echo "All spoke profiles must be updated with the new HUB public keys or tunnels will fail."
-  if ! prompt_yes_no "Continue with key rotation?" "n"; then
+  echo "WARNING: Rotating a HUB key requires updating all matching spoke profiles with the new HUB public key."
+
+  if prompt_yes_no "Rotate trusted HUB key?" "n"; then
+    rotate_trusted="true"
+  fi
+
+  if prompt_yes_no "Rotate untrusted HUB key?" "n"; then
+    rotate_untrusted="true"
+  fi
+
+  if [[ "${rotate_trusted}" != "true" && "${rotate_untrusted}" != "true" ]]; then
     echo "Key rotation cancelled."
     exit 1
   fi
 
   ensure_wg_key_tool
 
-  trusted_key="$(wg genkey)"
-  untrusted_key="$(wg genkey)"
+  if [[ "${rotate_trusted}" == "true" ]]; then
+    trusted_key="$(wg genkey)"
+    set_private_key "${TRUSTED_ACTIVE}" "${trusted_key}"
+    store_keypair_files "${trusted_key}" "${TRUSTED_PRIVATE_KEY_FILE}" "${TRUSTED_PUBLIC_KEY_FILE}" "trusted"
+    echo "Generated new trusted HUB keypair."
+  fi
 
-  set_private_key "${TRUSTED_ACTIVE}" "${trusted_key}"
-  set_private_key "${UNTRUSTED_ACTIVE}" "${untrusted_key}"
-
-  store_keypair_files "${trusted_key}" "${TRUSTED_PRIVATE_KEY_FILE}" "${TRUSTED_PUBLIC_KEY_FILE}" "trusted"
-  store_keypair_files "${untrusted_key}" "${UNTRUSTED_PRIVATE_KEY_FILE}" "${UNTRUSTED_PUBLIC_KEY_FILE}" "untrusted"
-
-  echo "Generated new trusted and untrusted HUB keypairs."
+  if [[ "${rotate_untrusted}" == "true" ]]; then
+    untrusted_key="$(wg genkey)"
+    set_private_key "${UNTRUSTED_ACTIVE}" "${untrusted_key}"
+    store_keypair_files "${untrusted_key}" "${UNTRUSTED_PRIVATE_KEY_FILE}" "${UNTRUSTED_PUBLIC_KEY_FILE}" "untrusted"
+    echo "Generated new untrusted HUB keypair."
+  fi
 }
 
 get_public_key_value() {
@@ -251,13 +264,7 @@ bootstrap_missing_private_keys() {
     return 0
   fi
 
-  echo "One or more HUB private key placeholders are still present."
-  if ! prompt_yes_no "Generate missing HUB private keys now?" "y"; then
-    echo "Set private keys manually before deploy:" >&2
-    echo "  ${TRUSTED_ACTIVE}" >&2
-    echo "  ${UNTRUSTED_ACTIVE}" >&2
-    exit 1
-  fi
+  echo "One or more HUB private key placeholders are still present. Generating missing HUB keys automatically."
 
   ensure_wg_key_tool
 
@@ -365,7 +372,7 @@ Usage: ./deploy-hub.sh [options]
 Options:
   --without-consolepi Skip starting the consolepi service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
-  --new-keys         Rotate HUB trusted and untrusted keypairs after warning prompt
+  --new-keys         Prompt separately for trusted and untrusted HUB key rotation
   --get-keys         Print current HUB trusted and untrusted public keys and exit
   --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
   --print-hosts      Print ConsolePi HOSTS from /etc/hosts (no file changes)
@@ -390,6 +397,9 @@ upsert_env_value() {
   if [[ ! -f "${ENV_FILE}" ]]; then
     cat > "${ENV_FILE}" <<'EOF'
 # HUB connection values. Optional overrides such as ports can be added later.
+
+MGMT_SSH_PORT=2222
+MGMT_ALLOWED_DIRECT_SSH=0.0.0.0/0
 
 WG_TRUSTED_SUBNET=
 WG_UNTRUSTED_SUBNET=

@@ -70,7 +70,7 @@ Re-run behavior:
 - preserves existing HUB private keys and existing peer public keys by matching `AllowedIPs`
 - adds newly rendered peers from updated `WG_*_PEER_IPS` lists
 - warns if new peers still have placeholder public keys
-- if HUB private key placeholders are detected, prompts to generate missing keys automatically
+- if HUB private key placeholders are detected, generates the missing keys automatically
 
 1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
 1. Render profile templates from `.env`:
