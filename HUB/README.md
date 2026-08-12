@@ -194,6 +194,15 @@ nocadmin:shell:$6$rounds=656000$def...$uvw...
 
 Re-deploy after changes so users and auth policy are applied.
 
+Automatic host-user SSH key import (recommended):
+
+- each `deploy-hub.sh` run scans host users from `/etc/passwd` with home paths under `/home/*` (and `/root`), then copies each found `~/.ssh/authorized_keys` into `consolepi/ssh/system-users/<username>.authorized_keys`
+- on container start, matching users are created/updated inside ConsolePi and each imported key file is installed to that same username
+- imported users are allowed over SSH and password login is locked for those users (key-based auth only)
+- this lets you use Ubuntu host user key assignments directly, without maintaining `users.conf` for key-only access
+
+`users.conf` remains supported as an optional fallback for explicit password-hash + mode (`menu`/`shell`) provisioning.
+
 SSH access is profile-restricted at interface level:
 
 - trusted interface (`TRUSTED_SSH_INTERFACE`) is allowed

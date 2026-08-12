@@ -41,6 +41,7 @@ services:
       - MGMT_SSH_ALLOW_CIDRS=${MGMT_SSH_ALLOW_CIDRS:-}
       - CONSOLEPI_SSH_PASSWORD_AUTH=${CONSOLEPI_SSH_PASSWORD_AUTH:-false}
       - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/ssh/users.conf}
+      - CONSOLEPI_SYSTEM_USERS_DIR=${CONSOLEPI_SYSTEM_USERS_DIR:-/ssh/system-users}
     volumes:
       - ./consolepi:/consolepi
       - ./consolepi/ssh:/ssh

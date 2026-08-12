@@ -15,6 +15,7 @@ UNTRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-
 CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/runtime"
 CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
 CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
+CONSOLEPI_SYSTEM_USERS_DIR="${SCRIPT_DIR}/consolepi/ssh/system-users"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
@@ -788,6 +789,41 @@ print(f"Wrote static ConsolePi remote cache: {cache_file} ({len(data)} entries)"
 PY
 }
 
+sync_consolepi_users_from_host() {
+  local passwd_file="/etc/passwd"
+  local generated_count="0"
+
+  mkdir -p "${CONSOLEPI_SYSTEM_USERS_DIR}"
+  find "${CONSOLEPI_SYSTEM_USERS_DIR}" -type f -name '*.authorized_keys' -delete 2>/dev/null || true
+
+  if [[ ! -r "${passwd_file}" ]]; then
+    echo "Skipping host SSH user import: ${passwd_file} is not readable."
+    return 0
+  fi
+
+  while IFS=: read -r user _ uid _ _ home shell; do
+    local key_file
+    local target_file
+
+    [[ -n "${user}" ]] || continue
+    [[ "${uid}" =~ ^[0-9]+$ ]] || continue
+    [[ "${home}" == /home/* || "${home}" == /root ]] || continue
+    [[ -d "${home}" ]] || continue
+    [[ "${shell}" != */nologin && "${shell}" != */false ]] || continue
+    [[ "${user}" =~ ^[a-z_][a-z0-9_-]*$ ]] || continue
+
+    key_file="${home}/.ssh/authorized_keys"
+    [[ -s "${key_file}" ]] || continue
+
+    target_file="${CONSOLEPI_SYSTEM_USERS_DIR}/${user}.authorized_keys"
+    cp "${key_file}" "${target_file}"
+    chmod 600 "${target_file}"
+    generated_count="$((generated_count + 1))"
+  done < "${passwd_file}"
+
+  echo "Imported ${generated_count} host user authorized_keys file(s) into ${CONSOLEPI_SYSTEM_USERS_DIR}."
+}
+
 for arg in "$@"; do
   case "$arg" in
     --without-consolepi)
@@ -856,6 +892,7 @@ resolve_compose_command
 chmod +x "${RENDER_SCRIPT}"
 "${RENDER_SCRIPT}"
 seed_consolepi_remote_cache
+sync_consolepi_users_from_host
 
 if [[ "${REFRESH_CONFIGS}" == "true" ]]; then
   if [[ -f "${TRUSTED_ACTIVE}" ]]; then

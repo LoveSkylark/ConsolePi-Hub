@@ -9,6 +9,7 @@ UNTRUSTED_SSH_INTERFACE="${UNTRUSTED_SSH_INTERFACE:-}"
 MGMT_ALLOWED_DIRECT_SSH="${MGMT_ALLOWED_DIRECT_SSH:-${ALLOW_DIRECT_SSH_CIDRS:-${MGMT_SSH_ALLOW_CIDRS:-}}}"
 CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/ssh/users.conf}"
+CONSOLEPI_SYSTEM_USERS_DIR="${CONSOLEPI_SYSTEM_USERS_DIR:-/ssh/system-users}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 ALLOWED_SSH_USERS="consolepi"
 CONSOLEPI_MENU_USERS=""
@@ -112,6 +113,40 @@ provision_user_from_file() {
   fi
 }
 
+provision_user_from_authorized_keys() {
+  local user="$1"
+  local key_path="$2"
+
+  [[ "${user}" =~ ^[a-z_][a-z0-9_-]*$ ]] || {
+    echo "Skipping invalid username in ${CONSOLEPI_SYSTEM_USERS_DIR}: ${user}" >&2
+    return 0
+  }
+
+  [[ -s "${key_path}" ]] || {
+    echo "Skipping ${user}: empty authorized_keys file ${key_path}" >&2
+    return 0
+  }
+
+  if id "${user}" >/dev/null 2>&1; then
+    usermod -s /bin/bash "${user}" || true
+  else
+    useradd -m -s /bin/bash "${user}"
+  fi
+
+  install -d -m 700 -o "${user}" -g "${user}" "/home/${user}/.ssh"
+  install -m 600 -o "${user}" -g "${user}" "${key_path}" "/home/${user}/.ssh/authorized_keys"
+
+  if command -v passwd >/dev/null 2>&1; then
+    passwd -l "${user}" >/dev/null 2>&1 || true
+  fi
+
+  if [[ "${CONSOLEPI_GRANT_SUDO}" == "true" ]]; then
+    usermod -aG sudo "${user}" || true
+  fi
+
+  add_ssh_user "${user}"
+}
+
 mkdir -p "${RUNTIME_DIR}" "${SSH_DIR}"
 
 # ConsolePi python menu expects this log path to exist and be writable.
@@ -176,6 +211,13 @@ if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
 
     provision_user_from_file "${raw_user}" "${raw_mode}" "${raw_hash}"
   done < "${CONSOLEPI_USERS_FILE}"
+fi
+
+if [[ -d "${CONSOLEPI_SYSTEM_USERS_DIR}" ]]; then
+  while IFS= read -r key_file; do
+    local_user="$(basename "${key_file}" .authorized_keys)"
+    provision_user_from_authorized_keys "${local_user}" "${key_file}"
+  done < <(find "${CONSOLEPI_SYSTEM_USERS_DIR}" -maxdepth 1 -type f -name '*.authorized_keys' | sort)
 fi
 
 ALLOWED_SSH_USERS="$(trim_spaces "${ALLOWED_SSH_USERS}")"
