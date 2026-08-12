@@ -11,6 +11,9 @@ Once the HUB and SPOKE are pointed at each other, most of the runtime layout is 
 The remaining manual inputs are the connection-specific values in `.env` such as profile,
 peer slots, tunnel endpoints, and peer keys.
 
+If `.env` is missing, `deploy-hub.sh` prompts for the trusted and untrusted `/24`
+subnets, writes a minimal `.env`, and continues.
+
 ## 1) Prepare files
 
 One-command deploy helper (recommended):
@@ -20,16 +23,23 @@ chmod +x deploy-hub.sh
 ./deploy-hub.sh
 ```
 
+On first run, if the subnet values are missing, the script prompts for:
+
+- `WG_TRUSTED_SUBNET` default `10.99.99.0/24`
+- `WG_UNTRUSTED_SUBNET` default `10.99.98.0/24`
+
 Optional flags:
 
 - `--without-consolepi`: skip starting the `consolepi` service
 - `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
-- `--get-hosts`: import `/etc/hosts` entries into `consolepi/data/runtime/ConsolePi.yaml` `HOSTS:`
+- `--get-hosts`: import `/etc/hosts` entries into `consolepi/runtime/ConsolePi.yaml` `HOSTS:`
 - `--print-hosts`: preview generated `HOSTS:` content without modifying files
 
 `--get-hosts`/`--print-hosts` behavior is configurable via `.env`:
 
-- `HOSTS_MAIN_MENU_PREFIXES`: comma-separated hostname prefixes promoted to `show_in_main: true` (default `dc1-,dc2-`)
+- `HOSTS_MAIN_MENU_PREFIXES`: optional comma-separated hostname prefixes promoted to `show_in_main: true`
+  - leave unset for no promotion
+  - set it only when you want specific hostnames surfaced in the main menu
 
 Container runtime identity defaults:
 
@@ -45,6 +55,13 @@ To change them for your deployment, either:
 
 If you set `TZ`, that value overrides host local time inside containers.
 
+WireGuard port defaults:
+
+- `WG_TRUSTED_PORT` defaults to `51821`
+- `WG_UNTRUSTED_PORT` defaults to `51820`
+
+These do not need to be present in `.env`. Add them only if you need to override the defaults.
+
 The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard plus ConsolePi services.
 
 Re-run behavior:
@@ -55,7 +72,7 @@ Re-run behavior:
 - warns if new peers still have placeholder public keys
 - if HUB private key placeholders are detected, prompts to generate missing keys automatically
 
-1. Copy `.env.example` to `.env` and edit values.
+1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
 1. Render profile templates from `.env`:
 
 ```bash
@@ -138,21 +155,21 @@ WireGuard peers can reach ConsolePi over the hub WireGuard IP using SSH:
 - username: `consolepi`
 - authentication: key only
 
-Place your admin public key in `./consolepi/ssh/authorized_keys` before starting the container.
+Edit `./consolepi/ssh/authorized_keys` and add your admin public key before starting the container.
 
 Optional multi-user password access:
 
 - Enable in `.env`: `CONSOLEPI_SSH_PASSWORD_AUTH=true`
 - Keep a tight external allow-list in `MGMT_ALLOWED_DIRECT_SSH`
-- Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
-  - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
+- The built-in `consolepi` account is always allowed for key-based login via `./consolepi/ssh/authorized_keys`
+- Additional login users are derived from `./consolepi/ssh/users.conf`
 - Keep `CONSOLEPI_GRANT_SUDO=true` if those users need `consolepi-menu` Python mode
 - For users with `mode=menu`, SSH uses `ForceCommand` to enter menu directly
 - Set `CONSOLEPI_MENU_EXIT_ACTION=logout` (default) to close session when menu exits
 - Set `CONSOLEPI_MENU_EXIT_ACTION=shell` only if you want menu users to fall back to shell
-- `CONSOLEPI_MENU_NOPASSWD_SUDO=true` grants passwordless sudo for `mode=menu` users only
+  - `CONSOLEPI_MENU_NOPASSWD_SUDO=true` grants passwordless sudo for `mode=menu` users only
   so `consolepi-menu` can run in forced-command mode without prompt failures
-- Create `./consolepi/ssh/users.conf` with one entry per line:
+- Edit the provided `./consolepi/ssh/users.conf` with one entry per line:
   - `username:mode:password_hash`
   - mode values: `menu` or `shell`
   - backward compatible `username:password_hash` format is treated as `shell`
@@ -254,9 +271,9 @@ You can also use the HUB registration helper non-interactively:
 
 - The `consolepi` service is included in normal compose lifecycle operations.
 - It uses `network_mode: service:wireguard-hub` so ConsolePi shares the namespace that hosts both trusted and untrusted WG interfaces.
-- Runtime data is persisted under `./consolepi/data`.
+- Runtime data is persisted under `./consolepi/runtime`.
 - SSH material (authorized keys / users.conf) is persisted under `./consolepi/ssh`.
-- ConsolePi logs are persisted under `./consolepi/data/log` (mounted to `/var/log/ConsolePi` in container).
+- ConsolePi logs are persisted under `./consolepi/log` (mounted to `/var/log/ConsolePi` in container).
 - Inbound SSH for ConsolePi is provided by the ConsolePi container itself and is reachable through the shared WireGuard namespace.
 - Untrusted profile clients are blocked from SSH by interface policy applied at container startup.
 

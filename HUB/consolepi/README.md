@@ -32,7 +32,7 @@ consolepi-sync -h
 
 ## Persistence
 
-- `/data/runtime/ConsolePi.yaml`: runtime ConsolePi config
+- `/consolepi/runtime/ConsolePi.yaml`: runtime ConsolePi config
 - `/ssh`: optional SSH keys/known_hosts and `users.conf` for hub auth/user provisioning
 
 On first start, the container seeds `ConsolePi.yaml` from the upstream example.

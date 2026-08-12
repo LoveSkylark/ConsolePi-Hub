@@ -2,29 +2,26 @@
 set -euo pipefail
 
 CONSOLEPI_HOME="/etc/ConsolePi"
-RUNTIME_DIR="/data/runtime"
+RUNTIME_DIR="/consolepi/runtime"
 SSH_DIR="/ssh"
 TRUSTED_SSH_INTERFACE="${TRUSTED_SSH_INTERFACE:-wg0}"
 UNTRUSTED_SSH_INTERFACE="${UNTRUSTED_SSH_INTERFACE:-}"
 MGMT_ALLOWED_DIRECT_SSH="${MGMT_ALLOWED_DIRECT_SSH:-${ALLOW_DIRECT_SSH_CIDRS:-${MGMT_SSH_ALLOW_CIDRS:-}}}"
 CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
-CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
+ALLOWED_SSH_USERS="consolepi"
 CONSOLEPI_MENU_USERS=""
 CONSOLEPI_MENU_EXIT_ACTION="${CONSOLEPI_MENU_EXIT_ACTION:-logout}"
 CONSOLEPI_MENU_NOPASSWD_SUDO="${CONSOLEPI_MENU_NOPASSWD_SUDO:-true}"
 
-# Accept comma-separated env input to avoid shell parsing issues in .env files.
-CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS//,/ }"
-
-add_allow_user() {
+add_ssh_user() {
   local user="$1"
-  case " ${CONSOLEPI_ALLOW_USERS} " in
+  case " ${ALLOWED_SSH_USERS} " in
     *" ${user} "*)
       ;;
     *)
-      CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS} ${user}"
+      ALLOWED_SSH_USERS="${ALLOWED_SSH_USERS} ${user}"
       ;;
   esac
 }
@@ -108,7 +105,7 @@ provision_user_from_file() {
     usermod -aG sudo "${user}" || true
   fi
 
-  add_allow_user "${user}"
+  add_ssh_user "${user}"
 
   if [[ "${login_mode}" == "menu" ]]; then
     add_menu_user "${user}"
@@ -181,10 +178,10 @@ if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
   done < "${CONSOLEPI_USERS_FILE}"
 fi
 
-CONSOLEPI_ALLOW_USERS="$(trim_spaces "${CONSOLEPI_ALLOW_USERS}")"
+ALLOWED_SSH_USERS="$(trim_spaces "${ALLOWED_SSH_USERS}")"
 
 if [[ "${CONSOLEPI_GRANT_SUDO}" == "true" ]]; then
-  for user in ${CONSOLEPI_ALLOW_USERS}; do
+  for user in ${ALLOWED_SSH_USERS}; do
     if id "${user}" >/dev/null 2>&1; then
       usermod -aG sudo "${user}" || true
     fi
@@ -202,8 +199,8 @@ if [[ -f /etc/ssh/sshd_config ]]; then
   grep -q '^PubkeyAuthentication yes' /etc/ssh/sshd_config || echo 'PubkeyAuthentication yes' >> /etc/ssh/sshd_config
   grep -q '^KbdInteractiveAuthentication no' /etc/ssh/sshd_config || echo 'KbdInteractiveAuthentication no' >> /etc/ssh/sshd_config
   sed -i '/^AllowUsers /d' /etc/ssh/sshd_config
-  if [[ -n "${CONSOLEPI_ALLOW_USERS}" ]]; then
-    echo "AllowUsers ${CONSOLEPI_ALLOW_USERS}" >> /etc/ssh/sshd_config
+  if [[ -n "${ALLOWED_SSH_USERS}" ]]; then
+    echo "AllowUsers ${ALLOWED_SSH_USERS}" >> /etc/ssh/sshd_config
   fi
 fi
 

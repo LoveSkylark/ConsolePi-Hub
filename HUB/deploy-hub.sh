@@ -12,7 +12,7 @@ TRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-tru
 TRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/trusted/config/wg_confs/wg-trusted.publickey"
 UNTRUSTED_PRIVATE_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.privatekey"
 UNTRUSTED_PUBLIC_KEY_FILE="${SCRIPT_DIR}/wireguard/untrusted/config/wg_confs/wg-untrusted.publickey"
-CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/data/runtime"
+CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/runtime"
 CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
 CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
 WITH_CONSOLEPI="true"
@@ -21,9 +21,31 @@ ROTATE_KEYS="false"
 PRINT_KEYS="false"
 PRINT_HOSTS="false"
 PRINT_HOSTS_ONLY="false"
-HOSTS_MAIN_MENU_PREFIXES="${HOSTS_MAIN_MENU_PREFIXES:-dc1-,dc2-}"
+HOSTS_MAIN_MENU_PREFIXES="${HOSTS_MAIN_MENU_PREFIXES:-}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
+
+prompt_required() {
+  local label="$1"
+  local default_value="${2:-}"
+  local reply
+
+  while true; do
+    if [[ -n "${default_value}" ]]; then
+      read -r -p "${label} [${default_value}]: " reply
+      reply="${reply:-${default_value}}"
+    else
+      read -r -p "${label}: " reply
+    fi
+
+    if [[ -n "${reply}" ]]; then
+      printf '%s\n' "${reply}"
+      return 0
+    fi
+
+    echo "A value is required."
+  done
+}
 
 prompt_yes_no() {
   local label="$1"
@@ -180,6 +202,44 @@ print_hub_public_keys() {
   fi
 }
 
+get_interface_value() {
+  local file_path="$1"
+  local key_name="$2"
+
+  awk -v key_name="${key_name}" '$1 == key_name && $2 == "=" { print $3; exit }' "${file_path}"
+}
+
+print_deployment_summary() {
+  local trusted_address
+  local untrusted_address
+  local trusted_port
+  local untrusted_port
+
+  trusted_address="$(get_interface_value "${TRUSTED_ACTIVE}" "Address")"
+  untrusted_address="$(get_interface_value "${UNTRUSTED_ACTIVE}" "Address")"
+  trusted_port="$(get_interface_value "${TRUSTED_ACTIVE}" "ListenPort")"
+  untrusted_port="$(get_interface_value "${UNTRUSTED_ACTIVE}" "ListenPort")"
+
+  echo
+  echo "Deployment summary:"
+  echo "Trusted profile:"
+  echo "  tunnel address: ${trusted_address}"
+  echo "  listen port:    ${trusted_port}/udp"
+  echo "  SSH access:     allowed to ConsolePi"
+  echo "Untrusted profile:"
+  echo "  tunnel address: ${untrusted_address}"
+  echo "  listen port:    ${untrusted_port}/udp"
+  echo "  SSH access:     blocked to ConsolePi"
+
+  if [[ -n "${MGMT_SSH_PORT:-}" ]]; then
+    echo "Direct management SSH port: ${MGMT_SSH_PORT}/tcp"
+  else
+    echo "Direct management SSH port: 2222/tcp"
+  fi
+
+  print_hub_public_keys
+}
+
 bootstrap_missing_private_keys() {
   local trusted_key
   local untrusted_key
@@ -320,6 +380,73 @@ load_env_if_present() {
     source "${ENV_FILE}"
     set +a
   fi
+}
+
+upsert_env_value() {
+  local key="$1"
+  local value="$2"
+  local tmp_file
+
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    cat > "${ENV_FILE}" <<'EOF'
+# HUB connection values. Optional overrides such as ports can be added later.
+
+WG_TRUSTED_SUBNET=
+WG_UNTRUSTED_SUBNET=
+
+WG_TRUSTED_PEER_KEY_1=
+WG_TRUSTED_PEER_KEY_2=
+WG_TRUSTED_PEER_KEY_3=
+
+WG_UNTRUSTED_PEER_KEY_1=
+WG_UNTRUSTED_PEER_KEY_2=
+WG_UNTRUSTED_PEER_KEY_3=
+EOF
+  fi
+
+  tmp_file="$(mktemp)"
+
+  if grep -qE "^${key}=" "${ENV_FILE}"; then
+    awk -F= -v key="${key}" -v value="${value}" '
+      BEGIN { replaced = 0 }
+      $1 == key {
+        print key "=" value
+        replaced = 1
+        next
+      }
+      { print }
+      END {
+        if (!replaced) {
+          print key "=" value
+        }
+      }
+    ' "${ENV_FILE}" > "${tmp_file}"
+  else
+    cat "${ENV_FILE}" > "${tmp_file}"
+    [[ -s "${tmp_file}" ]] && printf '\n' >> "${tmp_file}"
+    printf '%s=%s\n' "${key}" "${value}" >> "${tmp_file}"
+  fi
+
+  mv "${tmp_file}" "${ENV_FILE}"
+}
+
+ensure_required_env_values() {
+  load_env_if_present
+
+  if [[ -z "${WG_TRUSTED_SUBNET:-}" ]]; then
+    WG_TRUSTED_SUBNET="$(prompt_required "Trusted WireGuard subnet (/24)" "10.99.99.0/24")"
+    upsert_env_value "WG_TRUSTED_SUBNET" "${WG_TRUSTED_SUBNET}"
+  fi
+
+  if [[ -z "${WG_UNTRUSTED_SUBNET:-}" ]]; then
+    WG_UNTRUSTED_SUBNET="$(prompt_required "Untrusted WireGuard subnet (/24)" "10.99.98.0/24")"
+    upsert_env_value "WG_UNTRUSTED_SUBNET" "${WG_UNTRUSTED_SUBNET}"
+  fi
+
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
 }
 
 build_main_menu_prefix_regex() {
@@ -624,15 +751,7 @@ if [[ "${PRINT_HOSTS}" == "true" ]]; then
   exit 0
 fi
 
-if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
-  exit 1
-fi
-
-set -a
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-set +a
+ensure_required_env_values
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD="docker compose"
@@ -706,3 +825,5 @@ if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
 else
   echo "ConsolePi service skipped by request (--without-consolepi)."
 fi
+
+print_deployment_summary

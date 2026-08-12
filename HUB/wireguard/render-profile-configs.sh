@@ -24,17 +24,10 @@ download_repo_file() {
   fi
 }
 
-if [[ ! -f "${ENV_FILE}" ]]; then
-  if [[ ! -f "${HUB_DIR}/.env.example" ]]; then
-    echo "Missing ${HUB_DIR}/.env.example; pulling from ${REPO_URL}@${REPO_REF}"
-    download_repo_file "HUB/.env.example" "${HUB_DIR}/.env.example" || true
-  fi
-  echo "Missing ${ENV_FILE}. Copy .env.example to .env first." >&2
-  exit 1
+if [[ -f "${ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
 fi
-
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
 
 is_valid_ipv4() {
   local ip="$1"
@@ -194,8 +187,8 @@ EOF
 
 : "${WG_TRUSTED_SUBNET:?WG_TRUSTED_SUBNET must be set in .env}"
 : "${WG_UNTRUSTED_SUBNET:?WG_UNTRUSTED_SUBNET must be set in .env}"
-: "${WG_TRUSTED_PORT:?WG_TRUSTED_PORT must be set in .env}"
-: "${WG_UNTRUSTED_PORT:?WG_UNTRUSTED_PORT must be set in .env}"
+: "${WG_TRUSTED_PORT:=51821}"
+: "${WG_UNTRUSTED_PORT:=51820}"
 
 WG_TRUSTED_PREFIX="${WG_TRUSTED_SUBNET#*/}"
 WG_UNTRUSTED_PREFIX="${WG_UNTRUSTED_SUBNET#*/}"

@@ -40,12 +40,11 @@ services:
       - ALLOW_DIRECT_SSH_CIDRS=${ALLOW_DIRECT_SSH_CIDRS:-}
       - MGMT_SSH_ALLOW_CIDRS=${MGMT_SSH_ALLOW_CIDRS:-}
       - CONSOLEPI_SSH_PASSWORD_AUTH=${CONSOLEPI_SSH_PASSWORD_AUTH:-false}
-      - CONSOLEPI_ALLOW_USERS=${CONSOLEPI_ALLOW_USERS:-consolepi}
       - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/ssh/users.conf}
     volumes:
-      - ./consolepi/data:/data
-      - ./consolepi/data/log:/var/log/ConsolePi
+      - ./consolepi:/consolepi
       - ./consolepi/ssh:/ssh
+      - ./consolepi/log:/var/log/ConsolePi
       - /etc/localtime:/etc/localtime:ro
     stdin_open: true
     tty: true

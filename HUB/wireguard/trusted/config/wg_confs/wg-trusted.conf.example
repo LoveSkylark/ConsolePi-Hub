@@ -3,7 +3,7 @@
 
 [Interface]
 Address = 10.99.99.1/24
-ListenPort = 51820
+ListenPort = 51821
 PrivateKey = <HUB_TRUSTED_PRIVATE_KEY>
 SaveConfig = false
 PostUp = iptables -A FORWARD -i %i -o %i -j DROP

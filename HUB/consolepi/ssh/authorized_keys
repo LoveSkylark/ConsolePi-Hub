@@ -1,0 +1,3 @@
+# Add one SSH public key per line for inbound login to the consolepi account.
+# Example:
+# ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... admin@example
