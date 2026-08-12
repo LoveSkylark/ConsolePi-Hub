@@ -446,6 +446,16 @@ EOF
 ensure_required_env_values() {
   load_env_if_present
 
+  if [[ -z "${MGMT_SSH_PORT:-}" ]]; then
+    MGMT_SSH_PORT="$(prompt_required "Direct management SSH port" "2222")"
+    upsert_env_value "MGMT_SSH_PORT" "${MGMT_SSH_PORT}"
+  fi
+
+  if [[ -z "${MGMT_ALLOWED_DIRECT_SSH:-}" ]]; then
+    MGMT_ALLOWED_DIRECT_SSH="$(prompt_required "Direct management SSH source CIDR(s)" "0.0.0.0/0")"
+    upsert_env_value "MGMT_ALLOWED_DIRECT_SSH" "${MGMT_ALLOWED_DIRECT_SSH}"
+  fi
+
   if [[ -z "${WG_TRUSTED_SUBNET:-}" ]]; then
     WG_TRUSTED_SUBNET="$(prompt_required "Trusted WireGuard subnet (/24)" "10.99.99.0/24")"
     upsert_env_value "WG_TRUSTED_SUBNET" "${WG_TRUSTED_SUBNET}"

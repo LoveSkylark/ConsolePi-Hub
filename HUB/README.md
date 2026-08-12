@@ -11,8 +11,8 @@ Once the HUB and SPOKE are pointed at each other, most of the runtime layout is 
 The remaining manual inputs are the connection-specific values in `.env` such as profile,
 peer slots, tunnel endpoints, and peer keys.
 
-If `.env` is missing, `deploy-hub.sh` prompts for the trusted and untrusted `/24`
-subnets, writes a minimal `.env`, and continues.
+If `.env` is missing, `deploy-hub.sh` prompts for the management SSH settings and
+the trusted/untrusted `/24` subnets, writes a minimal `.env`, and continues.
 
 ## 1) Prepare files
 
@@ -23,7 +23,10 @@ chmod +x deploy-hub.sh
 ./deploy-hub.sh
 ```
 
-On first run, if the subnet values are missing, the script prompts for:
+On first run, if the required values are missing, the script prompts for:
+
+- `MGMT_SSH_PORT` default `2222`
+- `MGMT_ALLOWED_DIRECT_SSH` default `0.0.0.0/0`
 
 - `WG_TRUSTED_SUBNET` default `10.99.99.0/24`
 - `WG_UNTRUSTED_SUBNET` default `10.99.98.0/24`
