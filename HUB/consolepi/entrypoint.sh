@@ -15,6 +15,7 @@ ALLOWED_SSH_USERS="consolepi"
 CONSOLEPI_MENU_USERS=""
 CONSOLEPI_MENU_EXIT_ACTION="${CONSOLEPI_MENU_EXIT_ACTION:-logout}"
 CONSOLEPI_MENU_NOPASSWD_SUDO="${CONSOLEPI_MENU_NOPASSWD_SUDO:-true}"
+CONSOLEPI_DEFAULT_USER_MODE="${CONSOLEPI_DEFAULT_USER_MODE:-menu}"
 
 add_ssh_user() {
   local user="$1"
@@ -116,6 +117,7 @@ provision_user_from_file() {
 provision_user_from_authorized_keys() {
   local user="$1"
   local key_path="$2"
+  local login_mode="${CONSOLEPI_DEFAULT_USER_MODE}"
 
   [[ "${user}" =~ ^[a-z_][a-z0-9_-]*$ ]] || {
     echo "Skipping invalid username in ${CONSOLEPI_SYSTEM_USERS_DIR}: ${user}" >&2
@@ -145,6 +147,10 @@ provision_user_from_authorized_keys() {
   fi
 
   add_ssh_user "${user}"
+
+  if [[ "${login_mode}" == "menu" ]]; then
+    add_menu_user "${user}"
+  fi
 }
 
 mkdir -p "${RUNTIME_DIR}" "${SSH_DIR}"
@@ -197,7 +203,7 @@ if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then
     # Backward compatible format: username:password_hash
     if [[ -z "${raw_hash}" ]]; then
       raw_hash="${raw_mode}"
-      raw_mode="shell"
+      raw_mode="${CONSOLEPI_DEFAULT_USER_MODE}"
     fi
 
     case "${raw_mode}" in

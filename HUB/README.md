@@ -199,9 +199,15 @@ Automatic host-user SSH key import (recommended):
 - each `deploy-hub.sh` run scans host users from `/etc/passwd` with home paths under `/home/*` (and `/root`), then copies each found `~/.ssh/authorized_keys` into `consolepi/ssh/system-users/<username>.authorized_keys`
 - on container start, matching users are created/updated inside ConsolePi and each imported key file is installed to that same username
 - imported users are allowed over SSH and password login is locked for those users (key-based auth only)
+- imported users default to menu mode (ForceCommand launches ConsolePi menu on SSH login)
 - this lets you use Ubuntu host user key assignments directly, without maintaining `users.conf` for key-only access
 
 `users.conf` remains supported as an optional fallback for explicit password-hash + mode (`menu`/`shell`) provisioning.
+For legacy two-field entries (`username:password_hash`), the default mode is now `menu`.
+
+Optional override:
+
+- set `CONSOLEPI_DEFAULT_USER_MODE=shell` in `.env` if you prefer shell mode as the default for imported users and two-field `users.conf` entries.
 
 SSH access is profile-restricted at interface level:
 

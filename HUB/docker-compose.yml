@@ -42,6 +42,7 @@ services:
       - CONSOLEPI_SSH_PASSWORD_AUTH=${CONSOLEPI_SSH_PASSWORD_AUTH:-false}
       - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/ssh/users.conf}
       - CONSOLEPI_SYSTEM_USERS_DIR=${CONSOLEPI_SYSTEM_USERS_DIR:-/ssh/system-users}
+      - CONSOLEPI_DEFAULT_USER_MODE=${CONSOLEPI_DEFAULT_USER_MODE:-menu}
     volumes:
       - ./consolepi:/consolepi
       - ./consolepi/ssh:/ssh
