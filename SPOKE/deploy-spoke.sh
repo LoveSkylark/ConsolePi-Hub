@@ -417,6 +417,28 @@ EOF
     echo "Rendered ${wg_profile} spoke config at ${SCRIPT_DIR}/rendered/wg0.conf"
 }
 
+prompt_required() {
+  local label="$1"
+  local default_value="${2:-}"
+  local reply
+
+  while true; do
+    if [[ -n "${default_value}" ]]; then
+      read -r -p "${label} [${default_value}]: " reply
+      reply="${reply:-${default_value}}"
+    else
+      read -r -p "${label}: " reply
+    fi
+
+    if [[ -n "${reply}" ]]; then
+      printf '%s\n' "${reply}"
+      return 0
+    fi
+
+    echo "A value is required."
+  done
+}
+
 validate_port() {
   local port="$1"
 
