@@ -263,6 +263,9 @@ print_deployment_summary() {
 print_runtime_status() {
   local wg_show_output
   local api_probe_cmd
+  local ssh_port_mapping
+  local ssh_listen_output
+  local ssh_guard_rules
 
   echo
   echo "Runtime status:"
@@ -276,7 +279,15 @@ print_runtime_status() {
   if ! docker ps --format '{{.Names}}' | grep -qx "${WG_HUB_CONTAINER_NAME}"; then
     echo "  tunnel status: down (${WG_HUB_CONTAINER_NAME} container not running)"
     echo "  API status:    down (${CONSOLEPI_CONTAINER_NAME} container not running)"
+    echo "  SSH status:    down (${WG_HUB_CONTAINER_NAME} container not running)"
     return 0
+  fi
+
+  ssh_port_mapping="$(docker port "${WG_HUB_CONTAINER_NAME}" 22/tcp 2>/dev/null || true)"
+  if [[ -n "${ssh_port_mapping}" ]]; then
+    echo "  SSH publish:   ${ssh_port_mapping}"
+  else
+    echo "  SSH publish:   not published (22/tcp mapping missing on ${WG_HUB_CONTAINER_NAME})"
   fi
 
   if wg_show_output="$(docker exec "${WG_HUB_CONTAINER_NAME}" wg show 2>&1)"; then
@@ -296,7 +307,32 @@ print_runtime_status() {
 
   if ! docker ps --format '{{.Names}}' | grep -qx "${CONSOLEPI_CONTAINER_NAME}"; then
     echo "  API status:    down (${CONSOLEPI_CONTAINER_NAME} container not running)"
+    echo "  SSH status:    down (${CONSOLEPI_CONTAINER_NAME} container not running)"
     return 0
+  fi
+
+  if ssh_listen_output="$(docker exec "${CONSOLEPI_CONTAINER_NAME}" sh -lc "ss -ltn 2>/dev/null | awk 'NR == 1 || /:22[[:space:]]/'" 2>/dev/null)"; then
+    if printf '%s\n' "${ssh_listen_output}" | grep -q ':22'; then
+      echo "  SSH status:    up (sshd listening on :22)"
+      echo "  consolepi ssh listeners:"
+      while IFS= read -r line; do
+        [[ -n "${line}" ]] && echo "    ${line}"
+      done <<< "${ssh_listen_output}"
+    else
+      echo "  SSH status:    down (no listener on :22 inside ${CONSOLEPI_CONTAINER_NAME})"
+    fi
+  else
+    echo "  SSH status:    unknown (failed to inspect listeners in ${CONSOLEPI_CONTAINER_NAME})"
+  fi
+
+  ssh_guard_rules="$(docker exec "${CONSOLEPI_CONTAINER_NAME}" sh -lc "iptables -S CP_SSH_GUARD 2>/dev/null || true" 2>/dev/null || true)"
+  if [[ -n "${ssh_guard_rules}" ]]; then
+    echo "  CP_SSH_GUARD rules:"
+    while IFS= read -r line; do
+      echo "    ${line}"
+    done <<< "${ssh_guard_rules}"
+  else
+    echo "  CP_SSH_GUARD rules: unavailable (iptables chain missing or inaccessible)"
   fi
 
   api_probe_cmd='if command -v curl >/dev/null 2>&1; then curl -fsS --max-time 3 http://127.0.0.1:5000/api/v1.0/details >/dev/null; elif command -v wget >/dev/null 2>&1; then wget -q -T 3 -O - http://127.0.0.1:5000/api/v1.0/details >/dev/null; else exit 3; fi'
