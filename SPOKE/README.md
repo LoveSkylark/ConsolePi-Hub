@@ -2,6 +2,10 @@
 
 This folder builds one spoke `wg0.conf` that targets either HUB trusted or HUB untrusted.
 
+The deploy is intentionally low-input: after you choose the HUB profile and a few
+connection values on first run, the rest of the config is derived and later reruns
+simply re-render from `.env`.
+
 For end-to-end Pi provisioning (ConsolePi install + WireGuard attach), see [PI_CONSOLEPI_SETUP.md](PI_CONSOLEPI_SETUP.md).
 
 ## Start from a fresh Raspberry Pi image
@@ -17,36 +21,46 @@ Deploy the base OS image on the spoke Pi itself (microSD or USB boot media), not
 	- set username/password or SSH public key
 	- set locale/timezone/Wi-Fi if needed
 5. Write image, insert media into the Pi, and boot it.
-6. Log in to the Pi and run base updates:
-
-```bash
-sudo apt update && sudo apt upgrade -y
-```
-
-After that, continue with the sections below in this README.
+6. Log in to the Pi and continue with the deploy steps below.
 
 ## Quick start on the spoke box
 
-Run the interactive installer from this folder:
+Run the deploy from this folder. If `.env` is missing or required values are blank,
+the script prompts for the initial HUB connection details and then writes `.env`.
 
 ```bash
-chmod +x install-spoke.sh
-./install-spoke.sh
+chmod +x deploy-spoke.sh
+./deploy-spoke.sh
 ```
 
 Optional key rotation mode:
 
 ```bash
-./install-spoke.sh --new-key
+./deploy-spoke.sh --new-key
 ```
 
-`--new-key` forces a new spoke keypair after an explicit warning prompt.
+`--new-key` forces a new spoke keypair and updates `.env`.
 
-The installer will:
+Print the current public key for HUB registration:
 
-- ask for the hub endpoint, profile target, tunnel IPs, and hub public key
-- generate or accept the spoke private key
-- write `.env`
+```bash
+./deploy-spoke.sh --get-key
+```
+
+Optional preseed retention mode (for troubleshooting):
+
+```bash
+./deploy-spoke.sh --keep-preseed
+```
+
+`--keep-preseed` keeps the ConsolePi preseed file instead of deleting it after a successful install.
+
+The deploy script will:
+
+- read `.env` when present and prompt only for missing required values on first run
+- generate the spoke private key on first full deploy if it is missing
+- rotate the spoke private key only when `--new-key` is used
+- write `.env` back with the generated connection values
 - render `rendered/wg0.conf`
 - install WireGuard and enable `wg-quick@wg0`
 - optionally install ConsolePi in API-only mode (enables `consolepi-api`, disables mDNS services)
@@ -56,17 +70,46 @@ At the end it prints the spoke public key so you can register it on the HUB if n
 
 ## 1) Prepare
 
-1. Copy `.env.example` to `.env`.
-2. Set `SPOKE_PROFILE` to `trusted` or `untrusted`.
-3. Set `HUB_PORT`, `HUB_TUNNEL_IP`, and `SPOKE_TUNNEL_IP` for that selected profile target.
-4. Ensure `SPOKE_TUNNEL_IP` matches an existing HUB peer entry in the selected hub profile config.
-5. Fill in `SPOKE_PRIVATE_KEY` and `HUB_PUBLIC_KEY`.
+1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
+2. If values are missing, `deploy-spoke.sh` prompts for:
+	`HUB_PROFILE`, `WG_SUBNET`, `WG_SPOKE`, `HUB_ENDPOINT`, and `HUB_PUBLIC_KEY`.
+3. On second and later runs, it uses the values already in `.env` and only rebuilds the spoke config.
+
+Derived values:
+
+- trusted profile uses UDP port `51821`
+- untrusted profile uses UDP port `51820`
+- hub tunnel IP is always host `.1` in `WG_SUBNET`
+- spoke tunnel IP is host `.(10 + WG_SPOKE)` in `WG_SUBNET`
+- persistent keepalive defaults to `25`
+
+ConsolePi install behavior:
+
+- mDNS advertise/browse services are disabled after install
+- `consolepi-api` is enabled for HUB access on the upstream default port `5000`
+- ConsolePi country/locale defaults are derived from host locale when possible, with fallback to `US`
+- ConsolePi install defaults to enabled; override per run with `INSTALL_CONSOLEPI=false ./deploy-spoke.sh`
+- the deploy script always generates a transient random password for the upstream silent installer and does not write it to `.env`
+- after install, the `consolepi` account is hardened by locking its password and setting a `nologin` shell when available
+- the spoke public key is always printed at the end of a full deploy so you can register it on the HUB
+
+To override the derived country for a deploy, set `COUNTRY` in the shell before running the script:
+
+```bash
+COUNTRY=GB ./deploy-spoke.sh
+```
+
+To override keepalive for a deploy, set `PERSISTENT_KEEPALIVE` in the shell before running the script:
+
+```bash
+PERSISTENT_KEEPALIVE=15 ./deploy-spoke.sh
+```
 
 ## 2) Render
 
 ```bash
-chmod +x render-spoke-config.sh
-./render-spoke-config.sh
+chmod +x deploy-spoke.sh
+./deploy-spoke.sh --render-config
 ```
 
 Rendered outputs:

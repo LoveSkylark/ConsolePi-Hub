@@ -2,94 +2,78 @@
 
 This guide provisions a spoke Pi as a ConsolePi node and attaches it to the HUB using a rendered `wg0.conf` from this folder.
 
+The setup is mostly deterministic once the HUB profile, subnet, spoke slot, and hub
+endpoint/public key are known. Everything else is derived or defaulted by the deploy script.
+
 ## 1) Base OS prep
 
 1. On a laptop/workstation, use Raspberry Pi Imager to write Raspberry Pi OS Lite (64-bit, Bookworm) to the spoke Pi microSD/USB media.
 1. In imager advanced options, set hostname, enable SSH, and configure credentials (or SSH key), locale, and timezone.
 1. Boot the Pi from that media and log in.
-1. Update packages:
-
-```bash
-sudo apt update && sudo apt upgrade -y
-```
-
 1. Set hostname/timezone if needed:
 
 ```bash
 sudo raspi-config
 ```
 
-## 2) Install ConsolePi on the Pi
+## 2) Preferred setup on the spoke
 
-Use the upstream installer on an internet-connected Pi:
-
-```bash
-wget -q https://raw.githubusercontent.com/Pack3tL0ss/ConsolePi/master/installer/install.sh -O /tmp/ConsolePi
-sudo bash /tmp/ConsolePi
-sudo rm -f /tmp/ConsolePi
-```
-
-## 3) Spoke hardening for hub-and-spoke model
-
-This section is optional for your current policy. Your primary requirement
-(no spoke-to-spoke communication over VPN, hub-only over VPN) is enforced by
-WireGuard routing and hub-side FORWARD drop rules.
-
-Use API-only mode with fixed WG IPs. Disable discovery/advertising services so spokes do not build peer topology:
+Run the deploy from this `SPOKE` folder on the Pi. If `.env` is missing or
+required values are blank, the script prompts for the initial HUB connection details
+and then writes `.env`.
 
 ```bash
-sudo systemctl disable --now consolepi-mdnsreg consolepi-mdnsbrowse
+chmod +x deploy-spoke.sh
+./deploy-spoke.sh
 ```
 
-Ensure ConsolePi API is enabled so HUB can query this spoke directly:
+The deploy script reads `.env` when present, installs WireGuard, renders `wg0.conf`, deploys it
+to `/etc/wireguard/wg0.conf`, enables `wg-quick@wg0`, and optionally installs
+ConsolePi in API-only mode.
 
-```bash
-sudo systemctl enable --now consolepi-api
-```
+On the first run, if `.env` is missing or values are blank, the script prompts for
+the HUB profile, subnet, spoke slot, hub endpoint, and hub public key using defaults
+where available. On later runs, it uses the existing `.env` values and just refreshes
+the spoke config if you changed them.
 
-In ConsolePi config on the spoke:
+ConsolePi install is enabled by default. Override for one deploy with
+`INSTALL_CONSOLEPI=false ./deploy-spoke.sh` if needed.
 
-- Keep `HOSTS:` empty.
-- Do not enable Google Drive/cloud sync.
-- Keep spoke role limited to local console access plus hub-initiated SSH/API.
+During unattended ConsolePi install, the deploy script generates a transient
+random password only to satisfy the upstream installer. It is not stored in `.env`.
 
-## 4) Preferred setup on the spoke
+After install, the `consolepi` account is hardened by locking its password and
+setting a `nologin` shell when available.
 
-Run the interactive installer from this `SPOKE` folder on the Pi:
+The spoke public key is printed at the end of a full deploy so it can be copied to
+the HUB.
 
-```bash
-chmod +x install-spoke.sh
-./install-spoke.sh
-```
+The script generates the spoke private key on first full deploy.
+Use `./deploy-spoke.sh --new-key` to rotate it later, and `./deploy-spoke.sh --get-key`
+to print the current public key for the HUB peer entry.
 
-The installer will prompt for the values needed to build `.env`, install WireGuard,
-render `wg0.conf`, deploy it to `/etc/wireguard/wg0.conf`, enable `wg-quick@wg0`,
-and optionally install ConsolePi.
-
-It also prints the spoke public key at the end so you can confirm the matching HUB peer entry.
-
-## 5) Manual build of spoke WireGuard config from this repo
+## 3) Manual build of spoke WireGuard config from this repo
 
 On your admin workstation in this `SPOKE` folder:
 
 ```bash
 cp -n .env.example .env
 # edit .env values
-./render-spoke-config.sh
+./deploy-spoke.sh --render-config
 ```
 
 Output file:
 
 - `rendered/wg0.conf`
 
-## 6) Manual install of WireGuard config on the Pi
+## 4) Manual install of WireGuard config on the Pi
 
 Copy rendered config to the Pi, then apply:
 
 ```bash
 sudo apt install -y wireguard
 sudo mkdir -p /etc/wireguard
-sudo cp wg0.conf /etc/wireguard/wg0.conf
+sudo cp rendered/wg0.conf /etc/wireguard/wg0.conf
 sudo chmod 600 /etc/wireguard/wg0.conf
 sudo systemctl enable --now wg-quick@wg0
 ```
@@ -101,7 +85,7 @@ scp rendered/wg0.conf <pi-user>@<pi-ip>:/tmp/wg0.conf
 ssh <pi-user>@<pi-ip> "sudo cp /tmp/wg0.conf /etc/wireguard/wg0.conf && sudo chmod 600 /etc/wireguard/wg0.conf && sudo systemctl enable --now wg-quick@wg0"
 ```
 
-## 7) Verify on spoke and hub
+## 5) Verify on spoke and hub
 
 On spoke:
 
@@ -113,18 +97,24 @@ ip addr show wg0
 On hub:
 
 ```bash
-docker compose logs --tail=100 wireguard-trusted
-docker compose logs --tail=100 wireguard-untrusted
+docker compose logs --tail=100 wireguard-hub
 ```
 
-## 8) Profile behavior check
+## 6) Profile behavior check
 
 - This SPOKE pack renders one `wg0.conf` at a time.
-- Set `.env` to trusted values (port 51821, `10.99.99.x`) or untrusted values (port 51820, `10.99.98.x`) before rendering.
+- Set `HUB_PROFILE` to `trusted` or `untrusted` before rendering.
+- Set `WG_SUBNET` to the matching HUB profile subnet (`10.99.99.0/24` trusted or `10.99.98.0/24` untrusted by default).
+- Set `WG_SPOKE` to the HUB peer slot index for this spoke.
+- HUB tunnel IP is auto-derived as host `.1`; spoke tunnel IP is auto-derived as host `.(10 + WG_SPOKE)`.
+- Persistent keepalive defaults to `25`.
+- ConsolePi silent-install country/locale defaults are derived from host locale when possible, with fallback to `US`.
+- Override for one deploy with `COUNTRY=GB ./deploy-spoke.sh` if needed.
+- Override keepalive for one deploy with `PERSISTENT_KEEPALIVE=15 ./deploy-spoke.sh` if needed.
 - Trusted target: Pi can reach hub trusted WG IP and can access ConsolePi SSH path as designed.
 - Untrusted target: Pi can establish VPN tunnel but is blocked from ConsolePi SSH by hub policy.
 
-## 9) Recommended auth model
+## 7) Recommended auth model
 
 - Use SSH keys (no password auth) for access to ConsolePi on the hub.
 - Keep private keys out of git.

@@ -3,12 +3,13 @@ set -euo pipefail
 
 CONSOLEPI_HOME="/etc/ConsolePi"
 RUNTIME_DIR="/data/runtime"
+SSH_DIR="/ssh"
 TRUSTED_SSH_INTERFACE="${TRUSTED_SSH_INTERFACE:-wg0}"
 UNTRUSTED_SSH_INTERFACE="${UNTRUSTED_SSH_INTERFACE:-}"
-MGMT_SSH_ALLOW_CIDRS="${MGMT_SSH_ALLOW_CIDRS:-}"
+MGMT_ALLOWED_DIRECT_SSH="${MGMT_ALLOWED_DIRECT_SSH:-${ALLOW_DIRECT_SSH_CIDRS:-${MGMT_SSH_ALLOW_CIDRS:-}}}"
 CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_ALLOW_USERS="${CONSOLEPI_ALLOW_USERS:-consolepi}"
-CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}"
+CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/ssh/users.conf}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 CONSOLEPI_MENU_USERS=""
 CONSOLEPI_MENU_EXIT_ACTION="${CONSOLEPI_MENU_EXIT_ACTION:-logout}"
@@ -114,7 +115,7 @@ provision_user_from_file() {
   fi
 }
 
-mkdir -p "${RUNTIME_DIR}" /data/ssh
+mkdir -p "${RUNTIME_DIR}" "${SSH_DIR}"
 
 # ConsolePi python menu expects this log path to exist and be writable.
 install -d -m 0777 /var/log/ConsolePi
@@ -139,16 +140,16 @@ ln -sf "${RUNTIME_DIR}/ConsolePi.yaml" "${CONSOLEPI_HOME}/ConsolePi.yaml"
 ln -sf "${RUNTIME_DIR}/cloud.json" "${CONSOLEPI_HOME}/cloud.json"
 
 # Optional shared SSH material for hub->spoke auth.
-if [[ -d /data/ssh ]]; then
+if [[ -d "${SSH_DIR}" ]]; then
   mkdir -p /root/.ssh
-  cp -n /data/ssh/* /root/.ssh/ 2>/dev/null || true
+  cp -n "${SSH_DIR}"/* /root/.ssh/ 2>/dev/null || true
   chmod 700 /root/.ssh || true
   chmod 600 /root/.ssh/* 2>/dev/null || true
 
   # Optional inbound SSH key for connecting to this hub container.
-  if [[ -f /data/ssh/authorized_keys ]]; then
+  if [[ -f "${SSH_DIR}/authorized_keys" ]]; then
     install -d -m 700 -o consolepi -g consolepi /home/consolepi/.ssh
-    install -m 600 -o consolepi -g consolepi /data/ssh/authorized_keys /home/consolepi/.ssh/authorized_keys
+    install -m 600 -o consolepi -g consolepi "${SSH_DIR}/authorized_keys" /home/consolepi/.ssh/authorized_keys
   fi
 fi
 
@@ -216,8 +217,8 @@ if command -v iptables >/dev/null 2>&1; then
     iptables -F CP_SSH_GUARD
 
     # Optional external management CIDR allow-list for dedicated SSH port mapping.
-    if [[ -n "${MGMT_SSH_ALLOW_CIDRS}" ]]; then
-      IFS=',' read -r -a mgmt_cidrs <<< "${MGMT_SSH_ALLOW_CIDRS}"
+    if [[ -n "${MGMT_ALLOWED_DIRECT_SSH}" ]]; then
+      IFS=',' read -r -a mgmt_cidrs <<< "${MGMT_ALLOWED_DIRECT_SSH}"
       for cidr in "${mgmt_cidrs[@]}"; do
         cidr="${cidr//[[:space:]]/}"
         [[ -n "${cidr}" ]] || continue

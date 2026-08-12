@@ -86,6 +86,34 @@ derive_peer_ip_from_subnet() {
   printf '%s.%s.%s.%s' "${o1}" "${o2}" "${o3}" "${host_octet}"
 }
 
+derive_hub_ip_from_subnet() {
+  local subnet="$1"
+  local base_ip
+  local prefix
+  local o1
+  local o2
+  local o3
+  local o4
+
+  base_ip="${subnet%/*}"
+  prefix="${subnet#*/}"
+
+  if [[ "${prefix}" != "24" ]]; then
+    echo "Only /24 subnets are supported for derived HUB IPs: ${subnet}" >&2
+    exit 1
+  fi
+
+  is_valid_ipv4 "${base_ip}" || {
+    echo "Invalid subnet base IP: ${base_ip}" >&2
+    exit 1
+  }
+
+  IFS='.' read -r o1 o2 o3 o4 <<< "${base_ip}"
+
+  # Normalize HUB address to host .1 inside the selected /24.
+  printf '%s.%s.%s.1' "${o1}" "${o2}" "${o3}"
+}
+
 append_hub_peer_stanzas() {
   local target_file="$1"
   local profile_label="$2"
@@ -166,13 +194,13 @@ EOF
 
 : "${WG_TRUSTED_SUBNET:?WG_TRUSTED_SUBNET must be set in .env}"
 : "${WG_UNTRUSTED_SUBNET:?WG_UNTRUSTED_SUBNET must be set in .env}"
-: "${WG_TRUSTED_HUB_IP:?WG_TRUSTED_HUB_IP must be set in .env}"
-: "${WG_UNTRUSTED_HUB_IP:?WG_UNTRUSTED_HUB_IP must be set in .env}"
 : "${WG_TRUSTED_PORT:?WG_TRUSTED_PORT must be set in .env}"
 : "${WG_UNTRUSTED_PORT:?WG_UNTRUSTED_PORT must be set in .env}"
 
 WG_TRUSTED_PREFIX="${WG_TRUSTED_SUBNET#*/}"
 WG_UNTRUSTED_PREFIX="${WG_UNTRUSTED_SUBNET#*/}"
+WG_TRUSTED_HUB_IP="$(derive_hub_ip_from_subnet "${WG_TRUSTED_SUBNET}")"
+WG_UNTRUSTED_HUB_IP="$(derive_hub_ip_from_subnet "${WG_UNTRUSTED_SUBNET}")"
 
 mkdir -p "${SCRIPT_DIR}/trusted/config/wg_confs" "${SCRIPT_DIR}/untrusted/config/wg_confs" "${SCRIPT_DIR}/profiles"
 rm -f "${SCRIPT_DIR}/profiles"/profile-A*-untrusted.conf.example "${SCRIPT_DIR}/profiles"/profile-B*-trusted.conf.example

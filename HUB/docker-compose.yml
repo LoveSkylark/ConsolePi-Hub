@@ -8,7 +8,7 @@ services:
     environment:
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      - TZ=${TZ:-UTC}
+      - TZ=${TZ:-}
     ports:
       - "${WG_TRUSTED_PORT:-51821}:${WG_TRUSTED_PORT:-51821}/udp"
       - "${WG_UNTRUSTED_PORT:-51820}:${WG_UNTRUSTED_PORT:-51820}/udp"
@@ -16,6 +16,7 @@ services:
     volumes:
       - ./wireguard/trusted/config:/config
       - ./wireguard/untrusted/config/wg_confs/wg-untrusted.conf:/config/wg_confs/wg-untrusted.conf
+      - /etc/localtime:/etc/localtime:ro
       # For Linux hosts that need module visibility from the container.
       # Uncomment only when deploying on Linux and /lib/modules exists.
       # - /lib/modules:/lib/modules:ro
@@ -35,14 +36,17 @@ services:
     environment:
       - TRUSTED_SSH_INTERFACE=${TRUSTED_SSH_INTERFACE:-wg-trusted}
       - UNTRUSTED_SSH_INTERFACE=${UNTRUSTED_SSH_INTERFACE:-wg-untrusted}
+      - MGMT_ALLOWED_DIRECT_SSH=${MGMT_ALLOWED_DIRECT_SSH:-}
+      - ALLOW_DIRECT_SSH_CIDRS=${ALLOW_DIRECT_SSH_CIDRS:-}
       - MGMT_SSH_ALLOW_CIDRS=${MGMT_SSH_ALLOW_CIDRS:-}
       - CONSOLEPI_SSH_PASSWORD_AUTH=${CONSOLEPI_SSH_PASSWORD_AUTH:-false}
       - CONSOLEPI_ALLOW_USERS=${CONSOLEPI_ALLOW_USERS:-consolepi}
-      - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/data/ssh/users.conf}
+      - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/ssh/users.conf}
     volumes:
       - ./consolepi/data:/data
       - ./consolepi/data/log:/var/log/ConsolePi
-      - ./consolepi/workspace:/workspace
+      - ./consolepi/ssh:/ssh
+      - /etc/localtime:/etc/localtime:ro
     stdin_open: true
     tty: true
     restart: unless-stopped

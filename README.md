@@ -32,5 +32,5 @@ Files intended to stay out of git are ignored at the repo root:
 
 - Hub setup: `HUB/README.md`
 - Spoke setup: `SPOKE/README.md`
-- Spoke installer: `SPOKE/install-spoke.sh`
+- Spoke deploy tool: `SPOKE/deploy-spoke.sh`
 - Hub peer helper: `HUB/wireguard/register-peer.sh`

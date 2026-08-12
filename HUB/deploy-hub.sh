@@ -20,6 +20,8 @@ REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
 PRINT_KEYS="false"
 PRINT_HOSTS="false"
+PRINT_HOSTS_ONLY="false"
+HOSTS_MAIN_MENU_PREFIXES="${HOSTS_MAIN_MENU_PREFIXES:-dc1-,dc2-}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
 
@@ -306,19 +308,58 @@ Options:
   --new-keys         Rotate HUB trusted and untrusted keypairs after warning prompt
   --get-keys         Print current HUB trusted and untrusted public keys and exit
   --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
+  --print-hosts      Print ConsolePi HOSTS from /etc/hosts (no file changes)
   --help             Show this help
 EOF
 }
 
+load_env_if_present() {
+  if [[ -f "${ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    set +a
+  fi
+}
+
+build_main_menu_prefix_regex() {
+  local raw_prefixes="$1"
+  local regex=""
+  local prefix
+  local escaped
+  local prefixes
+
+  IFS=',' read -r -a prefixes <<< "${raw_prefixes}"
+  for prefix in "${prefixes[@]}"; do
+    prefix="${prefix#${prefix%%[![:space:]]*}}"
+    prefix="${prefix%${prefix##*[![:space:]]}}"
+    prefix="$(printf '%s' "${prefix}" | tr '[:upper:]' '[:lower:]')"
+    [[ -n "${prefix}" ]] || continue
+
+    escaped="$(printf '%s' "${prefix}" | sed -E 's/[][(){}.+*?^$|\\]/\\&/g')"
+    if [[ -n "${regex}" ]]; then
+      regex+="|"
+    fi
+    regex+="^${escaped}"
+  done
+
+  printf '%s' "${regex}"
+}
+
 generate_consolepi_hosts_entries() {
   local output_file="$1"
+  local allow_empty="${2:-true}"
   local hosts_file="/etc/hosts"
   local tmp_pairs
+  local pair_count
+  local main_menu_prefix_regex
 
   if [[ ! -r "${hosts_file}" ]]; then
     echo "Unable to read ${hosts_file}" >&2
     exit 1
   fi
+
+  main_menu_prefix_regex="$(build_main_menu_prefix_regex "${HOSTS_MAIN_MENU_PREFIXES}")"
 
   tmp_pairs="$(mktemp)"
 
@@ -326,7 +367,9 @@ generate_consolepi_hosts_entries() {
     /^[[:space:]]*#/ || NF < 2 { next }
     $1 ~ /:/ { next }
     $1 ~ /^(127\.|0\.0\.0\.0)$/ { next }
+    $1 == "255.255.255.255" { next }
     tolower($2) ~ /^localhost(\.|$)/ { next }
+    tolower($2) ~ /^broadcasthost(\.|$)/ { next }
     {
       ip = $1
       host = $2
@@ -339,12 +382,22 @@ generate_consolepi_hosts_entries() {
     }
   ' "${hosts_file}" > "${tmp_pairs}"
 
-  sort -f "${tmp_pairs}" | awk -F '\t' '
+  pair_count="$(wc -l < "${tmp_pairs}" | tr -d '[:space:]')"
+  if [[ "${pair_count}" == "0" ]]; then
+    rm -f "${tmp_pairs}"
+    if [[ "${allow_empty}" == "true" ]]; then
+      printf '  {}\n' > "${output_file}"
+      return 0
+    fi
+    return 10
+  fi
+
+  sort -f "${tmp_pairs}" | awk -F '\t' -v main_menu_re="${main_menu_prefix_regex}" '
     {
       host = $1
       ip = $2
       show_in_main = "false"
-      if (tolower(host) ~ /^(dc1-|dc2-)/) {
+      if (main_menu_re != "" && tolower(host) ~ main_menu_re) {
         show_in_main = "true"
       }
       print "  " host ":"
@@ -356,10 +409,6 @@ generate_consolepi_hosts_entries() {
   ' > "${output_file}"
 
   rm -f "${tmp_pairs}"
-
-  if [[ ! -s "${output_file}" ]]; then
-    printf '  {}\n' > "${output_file}"
-  fi
 }
 
 update_consolepi_hosts_from_etc_hosts() {
@@ -372,12 +421,16 @@ update_consolepi_hosts_from_etc_hosts() {
     exit 1
   fi
 
-  cp "${config_file}" "${config_file}.bak.${TIMESTAMP}"
-
   tmp_entries="$(mktemp)"
   tmp_output="$(mktemp)"
 
-  generate_consolepi_hosts_entries "${tmp_entries}"
+  if ! generate_consolepi_hosts_entries "${tmp_entries}" "false"; then
+    rm -f "${tmp_entries}" "${tmp_output}"
+    echo "No valid non-loopback IPv4 host entries were found in /etc/hosts; refusing to update HOSTS." >&2
+    exit 1
+  fi
+
+  cp "${config_file}" "${config_file}.bak.${TIMESTAMP}"
 
   awk -v entries_file="${tmp_entries}" '
     BEGIN {
@@ -398,9 +451,14 @@ update_consolepi_hosts_from_etc_hosts() {
       }
 
       if (in_hosts) {
-        if ($0 ~ /^[A-Z][A-Z0-9_]*:[[:space:]]*$/) {
+        if (
+          $0 ~ /^[^[:space:]#][^:]*:[[:space:]]*($|#)/ ||
+          $0 ~ /^---[[:space:]]*$/ ||
+          $0 ~ /^\.\.\.[[:space:]]*$/
+        ) {
           in_hosts = 0
           print
+          next
         }
         next
       }
@@ -424,6 +482,18 @@ update_consolepi_hosts_from_etc_hosts() {
 
   echo "Updated HOSTS in ${config_file}"
   echo "Backup saved to ${config_file}.bak.${TIMESTAMP}"
+}
+
+print_consolepi_hosts_from_etc_hosts() {
+  local tmp_entries
+
+  tmp_entries="$(mktemp)"
+  generate_consolepi_hosts_entries "${tmp_entries}" "true"
+
+  echo "HOSTS:"
+  cat "${tmp_entries}"
+
+  rm -f "${tmp_entries}"
 }
 
 seed_consolepi_remote_cache() {
@@ -522,6 +592,9 @@ for arg in "$@"; do
     --get-hosts)
       PRINT_HOSTS="true"
       ;;
+    --print-hosts)
+      PRINT_HOSTS_ONLY="true"
+      ;;
     --help)
       usage
       exit 0
@@ -539,7 +612,14 @@ if [[ "${PRINT_KEYS}" == "true" ]]; then
   exit 0
 fi
 
+if [[ "${PRINT_HOSTS_ONLY}" == "true" ]]; then
+  load_env_if_present
+  print_consolepi_hosts_from_etc_hosts
+  exit 0
+fi
+
 if [[ "${PRINT_HOSTS}" == "true" ]]; then
+  load_env_if_present
   update_consolepi_hosts_from_etc_hosts
   exit 0
 fi

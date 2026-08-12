@@ -2,10 +2,14 @@
 
 This folder contains a Docker Compose based HUB baseline:
 
-- WireGuard runs as two dedicated profile containers.
+- WireGuard runs in the `wireguard-hub` container with trusted and untrusted profiles/interfaces.
 - Trusted WireGuard profile: can access ConsolePi.
 - Untrusted WireGuard profile: blocked from ConsolePi SSH.
 - ConsolePi is a local image build based on Debian 12 Bookworm.
+
+Once the HUB and SPOKE are pointed at each other, most of the runtime layout is deterministic.
+The remaining manual inputs are the connection-specific values in `.env` such as profile,
+peer slots, tunnel endpoints, and peer keys.
 
 ## 1) Prepare files
 
@@ -20,6 +24,26 @@ Optional flags:
 
 - `--without-consolepi`: skip starting the `consolepi` service
 - `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
+- `--get-hosts`: import `/etc/hosts` entries into `consolepi/data/runtime/ConsolePi.yaml` `HOSTS:`
+- `--print-hosts`: preview generated `HOSTS:` content without modifying files
+
+`--get-hosts`/`--print-hosts` behavior is configurable via `.env`:
+
+- `HOSTS_MAIN_MENU_PREFIXES`: comma-separated hostname prefixes promoted to `show_in_main: true` (default `dc1-,dc2-`)
+
+Container runtime identity defaults:
+
+- `PUID` defaults to `1000`
+- `PGID` defaults to `1000`
+- `TZ` is optional; host local time is used by default via `/etc/localtime` bind mount
+
+These are set as defaults in compose, so they are not required in `.env`.
+To change them for your deployment, either:
+
+- add `PUID`, `PGID`, and/or `TZ` to `HUB/.env`, or
+- export them in your shell before running `docker compose`/`deploy-hub.sh`.
+
+If you set `TZ`, that value overrides host local time inside containers.
 
 The script renders templates, ensures active config files exist, checks for placeholder keys, applies permissions, and starts WireGuard plus ConsolePi services.
 
@@ -114,12 +138,12 @@ WireGuard peers can reach ConsolePi over the hub WireGuard IP using SSH:
 - username: `consolepi`
 - authentication: key only
 
-Place your admin public key in `./consolepi/data/ssh/authorized_keys` before starting the container.
+Place your admin public key in `./consolepi/ssh/authorized_keys` before starting the container.
 
 Optional multi-user password access:
 
 - Enable in `.env`: `CONSOLEPI_SSH_PASSWORD_AUTH=true`
-- Keep a tight external allow-list in `MGMT_SSH_ALLOW_CIDRS`
+- Keep a tight external allow-list in `MGMT_ALLOWED_DIRECT_SSH`
 - Define allowed users in `.env` with `CONSOLEPI_ALLOW_USERS` (comma-separated)
   - example: `CONSOLEPI_ALLOW_USERS=consolepi,opsadmin,nocadmin`
 - Keep `CONSOLEPI_GRANT_SUDO=true` if those users need `consolepi-menu` Python mode
@@ -128,7 +152,7 @@ Optional multi-user password access:
 - Set `CONSOLEPI_MENU_EXIT_ACTION=shell` only if you want menu users to fall back to shell
 - `CONSOLEPI_MENU_NOPASSWD_SUDO=true` grants passwordless sudo for `mode=menu` users only
   so `consolepi-menu` can run in forced-command mode without prompt failures
-- Create `./consolepi/data/ssh/users.conf` with one entry per line:
+- Create `./consolepi/ssh/users.conf` with one entry per line:
   - `username:mode:password_hash`
   - mode values: `menu` or `shell`
   - backward compatible `username:password_hash` format is treated as `shell`
@@ -158,9 +182,9 @@ Dedicated external management SSH port is also exposed on the host:
 
 - host port: `MGMT_SSH_PORT` (default `2222`)
 - container target: `22`
-- source restriction: `MGMT_SSH_ALLOW_CIDRS` (comma-separated CIDRs)
+- source restriction: `MGMT_ALLOWED_DIRECT_SSH` (comma-separated CIDRs)
 
-Set `MGMT_SSH_ALLOW_CIDRS` in `.env` to your management source(s), then connect:
+Set `MGMT_ALLOWED_DIRECT_SSH` in `.env` to your management source(s), then connect:
 
 ```bash
 ssh -p 2222 consolepi@<HUB_PUBLIC_IP_OR_DNS>
@@ -194,6 +218,11 @@ Network pools are driven by `.env` values:
 - `WG_TRUSTED_PEER_KEY_N` (trusted peer slot N)
 - `WG_UNTRUSTED_PEER_KEY_N` (untrusted peer slot N)
 
+HUB tunnel interface IPs are auto-derived from subnets (host `.1` in each `/24`):
+
+- trusted HUB IP: derived from `WG_TRUSTED_SUBNET` (for example `10.99.99.1`)
+- untrusted HUB IP: derived from `WG_UNTRUSTED_SUBNET` (for example `10.99.98.1`)
+
 Peer tunnel IPs are auto-derived from slot index within each /24 subnet:
 
 - slot `1` => host `.11`
@@ -226,6 +255,7 @@ You can also use the HUB registration helper non-interactively:
 - The `consolepi` service is included in normal compose lifecycle operations.
 - It uses `network_mode: service:wireguard-hub` so ConsolePi shares the namespace that hosts both trusted and untrusted WG interfaces.
 - Runtime data is persisted under `./consolepi/data`.
+- SSH material (authorized keys / users.conf) is persisted under `./consolepi/ssh`.
 - ConsolePi logs are persisted under `./consolepi/data/log` (mounted to `/var/log/ConsolePi` in container).
 - Inbound SSH for ConsolePi is provided by the ConsolePi container itself and is reachable through the shared WireGuard namespace.
 - Untrusted profile clients are blocked from SSH by interface policy applied at container startup.
