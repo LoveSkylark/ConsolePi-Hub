@@ -117,4 +117,23 @@ POWER:
 #      the need to enter a password.  By default this would be /home/pi/.ssh/id_rsa.pub (add as authorized key
 #      on the remote host (only applies to ssh hosts))
 HOSTS:
-  {}
+  ai.windows.is:
+    address: 192.168.102.210:22
+    method: ssh
+    show_in_main: false
+    group: Imported
+  nms.test.lab:
+    address: 10.181.0.181:22
+    method: ssh
+    show_in_main: false
+    group: Imported
+  nms.test2.lab:
+    address: 10.181.0.182:22
+    method: ssh
+    show_in_main: false
+    group: Imported
+  oob.vist.is:
+    address: 172.21.142.220:22
+    method: ssh
+    show_in_main: false
+    group: Imported

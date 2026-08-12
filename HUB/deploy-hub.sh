@@ -577,7 +577,12 @@ build_main_menu_prefix_regex() {
   local regex=""
   local prefix
   local escaped
-  local prefixes
+  local prefixes=()
+
+  if [[ -z "${raw_prefixes}" ]]; then
+    printf '%s' "${regex}"
+    return 0
+  fi
 
   IFS=',' read -r -a prefixes <<< "${raw_prefixes}"
   for prefix in "${prefixes[@]}"; do
@@ -701,11 +706,7 @@ update_consolepi_hosts_from_etc_hosts() {
       }
 
       if (in_hosts) {
-        if (
-          $0 ~ /^[^[:space:]#][^:]*:[[:space:]]*($|#)/ ||
-          $0 ~ /^---[[:space:]]*$/ ||
-          $0 ~ /^\.\.\.[[:space:]]*$/
-        ) {
+        if ($0 ~ /^[^[:space:]#][^:]*:[[:space:]]*($|#)/ || $0 ~ /^---[[:space:]]*$/ || $0 ~ /^\.\.\.[[:space:]]*$/) {
           in_hosts = 0
           print
           next
