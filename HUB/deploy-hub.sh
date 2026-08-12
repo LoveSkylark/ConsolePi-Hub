@@ -18,6 +18,7 @@ CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
+REBUILD_CONSOLEPI="false"
 PRINT_KEYS="false"
 PRINT_HOSTS="false"
 PRINT_HOSTS_ONLY="false"
@@ -374,6 +375,7 @@ Options:
   --without-consolepi Skip starting the consolepi service
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --new-keys         Prompt separately for trusted and untrusted HUB key rotation
+  --rebuild          Force a full no-cache rebuild of the ConsolePi image before start
   --get-keys         Print current HUB trusted and untrusted public keys and exit
   --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
   --print-hosts      Print ConsolePi HOSTS from /etc/hosts (no file changes)
@@ -724,6 +726,9 @@ for arg in "$@"; do
     --new-keys)
       ROTATE_KEYS="true"
       ;;
+    --rebuild)
+      REBUILD_CONSOLEPI="true"
+      ;;
     --get-keys)
       PRINT_KEYS="true"
       ;;
@@ -823,6 +828,9 @@ fi
 ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d wireguard-hub
 
 if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
+  if [[ "${REBUILD_CONSOLEPI}" == "true" ]]; then
+    ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" build --no-cache consolepi
+  fi
   ${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d --force-recreate consolepi
 fi
 
