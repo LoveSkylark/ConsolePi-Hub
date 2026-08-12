@@ -22,9 +22,12 @@ REBUILD_CONSOLEPI="false"
 PRINT_KEYS="false"
 PRINT_HOSTS="false"
 PRINT_HOSTS_ONLY="false"
+STATUS_ONLY="false"
 HOSTS_MAIN_MENU_PREFIXES="${HOSTS_MAIN_MENU_PREFIXES:-}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
+WG_HUB_CONTAINER_NAME="connectpi-wireguard-hub"
+CONSOLEPI_CONTAINER_NAME="connectpi-consolepi"
 
 prompt_required() {
   local label="$1"
@@ -253,6 +256,54 @@ print_deployment_summary() {
   fi
 
   print_hub_public_keys
+  print_runtime_status
+}
+
+print_runtime_status() {
+  local wg_show_output
+  local api_probe_cmd
+
+  echo
+  echo "Runtime status:"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "  tunnel status: unknown (docker not installed)"
+    echo "  API status:    unknown (docker not installed)"
+    return 0
+  fi
+
+  if ! docker ps --format '{{.Names}}' | grep -qx "${WG_HUB_CONTAINER_NAME}"; then
+    echo "  tunnel status: down (${WG_HUB_CONTAINER_NAME} container not running)"
+    echo "  API status:    down (${CONSOLEPI_CONTAINER_NAME} container not running)"
+    return 0
+  fi
+
+  if wg_show_output="$(docker exec "${WG_HUB_CONTAINER_NAME}" wg show 2>&1)"; then
+    if printf '%s\n' "${wg_show_output}" | grep -q '^interface:'; then
+      echo "  tunnel status: up"
+    else
+      echo "  tunnel status: down (no WireGuard interfaces reported)"
+    fi
+    echo "  wireguard-hub wg show:"
+    while IFS= read -r line; do
+      echo "    ${line}"
+    done <<< "${wg_show_output}"
+  else
+    echo "  tunnel status: down (failed to run 'wg show' in ${WG_HUB_CONTAINER_NAME})"
+    echo "  wireguard-hub wg show error: ${wg_show_output}"
+  fi
+
+  if ! docker ps --format '{{.Names}}' | grep -qx "${CONSOLEPI_CONTAINER_NAME}"; then
+    echo "  API status:    down (${CONSOLEPI_CONTAINER_NAME} container not running)"
+    return 0
+  fi
+
+  api_probe_cmd='if command -v curl >/dev/null 2>&1; then curl -fsS --max-time 3 http://127.0.0.1:5000/api/v1.0/details >/dev/null; elif command -v wget >/dev/null 2>&1; then wget -q -T 3 -O - http://127.0.0.1:5000/api/v1.0/details >/dev/null; else exit 3; fi'
+  if docker exec "${CONSOLEPI_CONTAINER_NAME}" sh -lc "${api_probe_cmd}" >/dev/null 2>&1; then
+    echo "  API status:    up (ConsolePi API reachable on 127.0.0.1:5000)"
+  else
+    echo "  API status:    down (ConsolePi API not reachable on 127.0.0.1:5000)"
+  fi
 }
 
 bootstrap_missing_private_keys() {
@@ -376,11 +427,23 @@ Options:
   --refresh-configs  Recreate active wg config files from examples (backs up existing files)
   --new-keys         Prompt separately for trusted and untrusted HUB key rotation
   --rebuild          Force a full no-cache rebuild of the ConsolePi image before start
+  --status           Print live tunnel/API status and exit
   --get-keys         Print current HUB trusted and untrusted public keys and exit
   --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
   --print-hosts      Print ConsolePi HOSTS from /etc/hosts (no file changes)
   --help             Show this help
 EOF
+}
+
+resolve_compose_command() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+  else
+    echo "Docker Compose is required (docker compose or docker-compose)." >&2
+    return 1
+  fi
 }
 
 load_env_if_present() {
@@ -739,6 +802,9 @@ for arg in "$@"; do
     --rebuild)
       REBUILD_CONSOLEPI="true"
       ;;
+    --status)
+      STATUS_ONLY="true"
+      ;;
     --get-keys)
       PRINT_KEYS="true"
       ;;
@@ -777,16 +843,15 @@ if [[ "${PRINT_HOSTS}" == "true" ]]; then
   exit 0
 fi
 
+if [[ "${STATUS_ONLY}" == "true" ]]; then
+  resolve_compose_command >/dev/null 2>&1 || true
+  print_runtime_status
+  exit 0
+fi
+
 ensure_required_env_values
 
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD="docker-compose"
-else
-  echo "Docker Compose is required (docker compose or docker-compose)." >&2
-  exit 1
-fi
+resolve_compose_command
 
 chmod +x "${RENDER_SCRIPT}"
 "${RENDER_SCRIPT}"

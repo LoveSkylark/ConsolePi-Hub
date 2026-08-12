@@ -36,6 +36,7 @@ Optional flags:
 - `--without-consolepi`: skip starting the `consolepi` service
 - `--refresh-configs`: recreates active `wg-*.conf` files from fresh rendered examples (with timestamped backups)
 - `--rebuild`: forces a full no-cache rebuild of the `consolepi` image before start
+- `--status`: prints live WireGuard (`wg show` from `wireguard-hub`) and ConsolePi API status, then exits
 - `--get-hosts`: import `/etc/hosts` entries into `consolepi/runtime/ConsolePi.yaml` `HOSTS:`
 - `--print-hosts`: preview generated `HOSTS:` content without modifying files
 

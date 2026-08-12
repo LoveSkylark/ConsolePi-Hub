@@ -55,6 +55,14 @@ Optional preseed retention mode (for troubleshooting):
 
 `--keep-preseed` keeps the ConsolePi preseed file instead of deleting it after a successful install.
 
+Status check mode (no changes applied):
+
+```bash
+./deploy-spoke.sh --status
+```
+
+`--status` prints live WireGuard (`wg show wg0`) and ConsolePi API status, then exits.
+
 The deploy script will:
 
 - read `.env` when present and prompt only for missing required values on first run

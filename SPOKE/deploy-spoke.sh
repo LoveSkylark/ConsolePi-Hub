@@ -10,6 +10,7 @@ RAW_BASE="${REPO_URL/github.com/raw.githubusercontent.com}/${REPO_REF}"
 NEW_KEY_REQUESTED="false"
 GET_KEY_REQUESTED="false"
 RENDER_CONFIG_ONLY="false"
+STATUS_ONLY="false"
 CONSOLEPI_PRESEED_DIR="${SCRIPT_DIR}/consolepi-stage"
 CONSOLEPI_PRESEED_FILE="${CONSOLEPI_PRESEED_DIR}/install.conf"
 CONSOLEPI_PASSWORD=""
@@ -303,6 +304,41 @@ print_deployment_summary() {
   echo "ConsolePi mode: API-only (mDNS disabled)"
   echo
   echo "Next check: ${SUDO} wg show"
+  print_runtime_status
+}
+
+print_runtime_status() {
+  local wg_output
+
+  echo
+  echo "Runtime status:"
+
+  if wg_output="$(wg show wg0 2>&1)"; then
+    echo "  tunnel status: up (wg0 active)"
+    echo "  wg show wg0:"
+    while IFS= read -r line; do
+      echo "    ${line}"
+    done <<< "${wg_output}"
+  else
+    echo "  tunnel status: down (wg0 not active)"
+    echo "  wg show wg0 error: ${wg_output}"
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet consolepi-api; then
+      if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 3 http://127.0.0.1:5000/api/v1.0/details >/dev/null 2>&1; then
+        echo "  API status:    up (consolepi-api active and reachable)"
+      elif command -v wget >/dev/null 2>&1 && wget -q -T 3 -O - http://127.0.0.1:5000/api/v1.0/details >/dev/null 2>&1; then
+        echo "  API status:    up (consolepi-api active and reachable)"
+      else
+        echo "  API status:    down (service active but endpoint unreachable)"
+      fi
+    else
+      echo "  API status:    down (consolepi-api service inactive)"
+    fi
+  else
+    echo "  API status:    unknown (systemctl not available)"
+  fi
 }
 
 usage() {
@@ -313,6 +349,7 @@ Options:
   --new-key       Force generation of a new spoke private key
   --get-key       Print the current spoke public key and exit
   --render-config Render spoke config from .env only (no install/apply)
+  --status        Print live tunnel/API status and exit
   --keep-preseed  Keep ConsolePi preseed file after install
   --help          Show this help
 EOF
@@ -328,6 +365,9 @@ for arg in "$@"; do
       ;;
     --render-config)
       RENDER_CONFIG_ONLY="true"
+      ;;
+    --status)
+      STATUS_ONLY="true"
       ;;
     --keep-preseed)
       KEEP_PRESEED="true"
@@ -602,6 +642,11 @@ fi
 
 if [[ "${RENDER_CONFIG_ONLY}" == "true" ]]; then
   render_config_from_env
+  exit 0
+fi
+
+if [[ "${STATUS_ONLY}" == "true" ]]; then
+  print_runtime_status
   exit 0
 fi
 
