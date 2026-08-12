@@ -267,6 +267,44 @@ print_current_spoke_public_key() {
   echo "Current spoke public key: ${public_key}"
 }
 
+print_deployment_summary() {
+  local hub_port
+  local hub_tunnel_ip
+  local spoke_tunnel_ip
+
+  hub_port="$(derive_hub_port_from_profile "${HUB_PROFILE}")"
+  hub_tunnel_ip="$(derive_hub_ip_from_subnet "${WG_SUBNET}")"
+  spoke_tunnel_ip="$(derive_spoke_ip_from_subnet "${WG_SUBNET}" "${WG_SPOKE}")"
+
+  echo "Deployment summary:"
+  echo "Profile: ${HUB_PROFILE}"
+  echo "Spoke slot: ${WG_SPOKE}"
+  echo "Spoke tunnel address: ${spoke_tunnel_ip}/32"
+  echo "Hub endpoint: ${HUB_ENDPOINT}:${hub_port}"
+  echo "Hub tunnel address: ${hub_tunnel_ip}/32"
+  echo "Persistent keepalive: ${PERSISTENT_KEEPALIVE}"
+  echo "WireGuard config: /etc/wireguard/wg0.conf"
+  echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
+  echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
+  echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
+
+  if [[ "${PRESEED_REMOVED}" == "true" ]]; then
+    echo "ConsolePi preseed file: removed after successful install"
+  elif [[ "${INSTALL_CONSOLEPI}" == "true" ]]; then
+    echo "ConsolePi preseed file: ${CONSOLEPI_PRESEED_FILE}"
+    if [[ "${KEEP_PRESEED}" == "true" ]]; then
+      echo "ConsolePi preseed retention: enabled by --keep-preseed"
+    fi
+  fi
+
+  echo "Deployed public key file: /etc/wireguard/wg0.publickey"
+  echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
+  echo "ConsolePi API check: curl -s http://127.0.0.1:5000/api/v1.0/details | head"
+  echo "ConsolePi mode: API-only (mDNS disabled)"
+  echo
+  echo "Next check: ${SUDO} wg show"
+}
+
 usage() {
   cat <<EOF
 Usage: ./deploy-spoke.sh [options]
@@ -689,21 +727,4 @@ harden_consolepi_account
 
 echo
 echo "Install complete."
-echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
-echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
-echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
-if [[ "${PRESEED_REMOVED}" == "true" ]]; then
-  echo "ConsolePi preseed file: removed after successful install"
-elif [[ "${INSTALL_CONSOLEPI}" == "true" ]]; then
-  echo "ConsolePi preseed file: ${CONSOLEPI_PRESEED_FILE}"
-  if [[ "${KEEP_PRESEED}" == "true" ]]; then
-    echo "ConsolePi preseed retention: enabled by --keep-preseed"
-  fi
-fi
-echo "WireGuard config: /etc/wireguard/wg0.conf"
-echo "Deployed public key file: /etc/wireguard/wg0.publickey"
-echo "Rendered summary: ${SCRIPT_DIR}/rendered/summary.txt"
-echo "ConsolePi API check: curl -s http://127.0.0.1:5000/api/v1.0/details | head"
-echo "ConsolePi mode: API-only (mDNS disabled)"
-echo
-echo "Next check: ${SUDO} wg show"
+print_deployment_summary

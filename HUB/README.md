@@ -71,6 +71,7 @@ The script renders templates, ensures active config files exist, checks for plac
 Re-run behavior:
 
 - safe to run repeatedly after editing `.env`
+- always force-recreates `wireguard-hub` so updated env/config changes are reloaded
 - preserves existing HUB private keys and existing peer public keys by matching `AllowedIPs`
 - adds newly rendered peers from updated `WG_*_PEER_IPS` lists
 - warns if new peers still have placeholder public keys

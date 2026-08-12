@@ -835,7 +835,7 @@ if (( trusted_missing > 0 || untrusted_missing > 0 )); then
   echo "Existing peers with real keys will still run; new placeholder peers will not handshake until keys are set." >&2
 fi
 
-${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d wireguard-hub
+${COMPOSE_CMD} -f "${SCRIPT_DIR}/docker-compose.yml" up -d --force-recreate wireguard-hub
 
 if [[ "${WITH_CONSOLEPI}" == "true" ]]; then
   if [[ "${REBUILD_CONSOLEPI}" == "true" ]]; then
