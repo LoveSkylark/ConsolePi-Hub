@@ -18,6 +18,8 @@ PRESEED_REMOVED="false"
 KEEP_PRESEED="false"
 HUB_REMOTE_SSH_USER="${HUB_REMOTE_SSH_USER:-}"
 HUB_REMOTE_SSH_PUBKEY="${HUB_REMOTE_SSH_PUBKEY:-}"
+HUB_REMOTE_SSH_PUBKEY_FILE="${HUB_REMOTE_SSH_PUBKEY_FILE:-${SCRIPT_DIR}/../HUB/consolepi/ssh/hub_spoke_ed25519.pub}"
+HUB_ENV_FILE="${HUB_ENV_FILE:-${SCRIPT_DIR}/../HUB/.env}"
 
 is_valid_ipv4() {
   local ip="$1"
@@ -238,6 +240,35 @@ resolve_default_remote_ssh_user() {
   fi
 
   printf '%s' "consolepi"
+}
+
+resolve_hub_remote_ssh_user() {
+  local from_hub_env=""
+
+  if [[ -n "${HUB_REMOTE_SSH_USER}" ]]; then
+    return 0
+  fi
+
+  if [[ -f "${HUB_ENV_FILE}" ]]; then
+    from_hub_env="$(awk -F= '/^CONSOLEPI_REMOTE_USER=/{print $2; exit}' "${HUB_ENV_FILE}" | tr -d '[:space:]')"
+  fi
+
+  if [[ -n "${from_hub_env}" ]]; then
+    HUB_REMOTE_SSH_USER="${from_hub_env}"
+    return 0
+  fi
+
+  HUB_REMOTE_SSH_USER="$(resolve_default_remote_ssh_user)"
+}
+
+resolve_hub_remote_ssh_pubkey() {
+  if [[ -n "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
+    return 0
+  fi
+
+  if [[ -f "${HUB_REMOTE_SSH_PUBKEY_FILE}" ]]; then
+    HUB_REMOTE_SSH_PUBKEY="$(awk 'NF {print; exit}' "${HUB_REMOTE_SSH_PUBKEY_FILE}")"
+  fi
 }
 
 ensure_hub_remote_ssh_access() {
@@ -760,22 +791,20 @@ if is_placeholder_value "${HUB_PUBLIC_KEY}" "CHANGE_ME_HUB_PUBLIC_KEY"; then
   exit 1
 fi
 
-if [[ -z "${HUB_REMOTE_SSH_USER}" ]]; then
-  HUB_REMOTE_SSH_USER="$(prompt_required "Remote SSH user that HUB should use" "$(resolve_default_remote_ssh_user)")"
+resolve_hub_remote_ssh_user
+resolve_hub_remote_ssh_pubkey
+
+if [[ -z "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
+  echo "HUB remote SSH public key is required for passwordless HUB->SPOKE access." >&2
+  echo "Set HUB_REMOTE_SSH_PUBKEY, or place the key in ${HUB_REMOTE_SSH_PUBKEY_FILE}." >&2
+  exit 1
 fi
 
-while true; do
-  if [[ -z "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
-    HUB_REMOTE_SSH_PUBKEY="$(prompt_required "HUB remote SSH public key (from HUB consolepi/ssh/hub_spoke_ed25519.pub)")"
-  fi
-
-  if is_valid_ssh_public_key "${HUB_REMOTE_SSH_PUBKEY}"; then
-    break
-  fi
-
-  echo "Invalid SSH public key format. Paste a full key line such as ssh-ed25519 AAAA..."
-  HUB_REMOTE_SSH_PUBKEY=""
-done
+if ! is_valid_ssh_public_key "${HUB_REMOTE_SSH_PUBKEY}"; then
+  echo "Invalid HUB_REMOTE_SSH_PUBKEY format." >&2
+  echo "Expected a full key line, e.g. ssh-ed25519 AAAA..." >&2
+  exit 1
+fi
 
 ${SUDO} apt-get update
 ${SUDO} apt-get install -y wireguard
