@@ -25,6 +25,26 @@ Deploy the base OS image on the spoke Pi itself (microSD or USB boot media), not
 
 ## Quick start on the spoke box
 
+Cloud bootstrap (single command):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
+```
+
+If `curl` is not available:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
+```
+
+The bootstrap script installs/updates only the `SPOKE` subtree under `~/ConnectPi-Spoke` and runs `SPOKE/deploy-spoke.sh`.
+It also tries to place the shared HUB->SPOKE public key at `SPOKE/hub_spoke_ed25519.pub`.
+Any flags are forwarded to the deploy script, for example:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash -s -- --status
+```
+
 Run the deploy from this folder. If `.env` is missing or required values are blank,
 the script prompts for the initial HUB connection details and then writes `.env`.
 
@@ -83,7 +103,8 @@ At the end it prints the spoke public key so you can register it on the HUB if n
    `HUB_PROFILE`, `WG_SUBNET`, `WG_SPOKE`, `HUB_ENDPOINT`, and `HUB_PUBLIC_KEY`.
 3. HUB remote shell access values are auto-resolved by default:
    `HUB_REMOTE_SSH_USER` is fixed to `consolepi`.
-4. `HUB_REMOTE_SSH_PUBKEY` auto-loads from `../HUB/consolepi/ssh/hub_spoke_ed25519.pub` when available.
+4. `HUB_REMOTE_SSH_PUBKEY` auto-loads from `./hub_spoke_ed25519.pub`.
+   In this repository, that file can be a symlink to `../HUB/consolepi/ssh/hub_spoke_ed25519.pub` so both paths use one canonical key.
 5. Override manually only when needed by exporting `HUB_REMOTE_SSH_PUBKEY` before running deploy.
 6. On second and later runs, it uses the values already in `.env` and only rebuilds the spoke config.
 
