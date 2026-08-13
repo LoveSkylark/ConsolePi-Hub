@@ -26,6 +26,7 @@ REBUILD_CONSOLEPI="false"
 PRINT_KEYS="false"
 PRINT_HOSTS="false"
 PRINT_HOSTS_ONLY="false"
+PRINT_REMOTE_KEY="false"
 STATUS_ONLY="false"
 HOSTS_MAIN_MENU_PREFIXES="${HOSTS_MAIN_MENU_PREFIXES:-}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -52,23 +53,16 @@ resolve_consolepi_remote_user() {
 }
 
 ensure_hub_spoke_ssh_keypair() {
-  mkdir -p "${SCRIPT_DIR}/consolepi/ssh"
-
-  if [[ -s "${CONSOLEPI_HUB_SPOKE_KEY_FILE}" && -s "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}" ]]; then
-    chmod 600 "${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
-    chmod 644 "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
-    return 0
-  fi
-
-  if ! command -v ssh-keygen >/dev/null 2>&1; then
-    echo "OpenSSH client tools (ssh-keygen) are required to generate HUB remote SSH keypair." >&2
+  if [[ ! -s "${CONSOLEPI_HUB_SPOKE_KEY_FILE}" || ! -s "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}" ]]; then
+    echo "Missing required shared HUB->SPOKE SSH key files:" >&2
+    echo "  ${CONSOLEPI_HUB_SPOKE_KEY_FILE}" >&2
+    echo "  ${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}" >&2
+    echo "These keys are expected to exist in the repository." >&2
     exit 1
   fi
 
-  ssh-keygen -t ed25519 -N '' -f "${CONSOLEPI_HUB_SPOKE_KEY_FILE}" -C "connectpi-hub-to-spoke" >/dev/null
   chmod 600 "${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
   chmod 644 "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
-  echo "Generated HUB-to-SPOKE SSH keypair: ${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
 }
 
 prompt_required() {
@@ -509,6 +503,7 @@ Options:
   --rebuild          Force a full no-cache rebuild of the ConsolePi image before start
   --status           Print live tunnel/API status and exit
   --get-keys         Print current HUB trusted and untrusted public keys and exit
+  --get-remote-key   Print repo-managed HUB->SPOKE SSH public key
   --get-hosts        Update ConsolePi HOSTS from /etc/hosts (SSH only, no pinned username) and exit
   --print-hosts      Print ConsolePi HOSTS from /etc/hosts (no file changes)
   --help             Show this help
@@ -950,6 +945,9 @@ for arg in "$@"; do
     --get-keys)
       PRINT_KEYS="true"
       ;;
+    --get-remote-key)
+      PRINT_REMOTE_KEY="true"
+      ;;
     --get-hosts)
       PRINT_HOSTS="true"
       ;;
@@ -973,13 +971,21 @@ if [[ "${PRINT_KEYS}" == "true" ]]; then
   exit 0
 fi
 
+if [[ "${PRINT_REMOTE_KEY}" == "true" ]]; then
+  ensure_hub_spoke_ssh_keypair
+  cat "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
+  exit 0
+fi
+
 if [[ "${PRINT_HOSTS_ONLY}" == "true" ]]; then
+  ensure_hub_spoke_ssh_keypair
   load_env_if_present
   print_consolepi_hosts_from_etc_hosts
   exit 0
 fi
 
 if [[ "${PRINT_HOSTS}" == "true" ]]; then
+  ensure_hub_spoke_ssh_keypair
   load_env_if_present
   update_consolepi_hosts_from_etc_hosts
   exit 0
