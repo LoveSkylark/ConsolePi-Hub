@@ -10,6 +10,8 @@ MGMT_ALLOWED_DIRECT_SSH="${MGMT_ALLOWED_DIRECT_SSH:-${ALLOW_DIRECT_SSH_CIDRS:-${
 CONSOLEPI_SSH_PASSWORD_AUTH="${CONSOLEPI_SSH_PASSWORD_AUTH:-false}"
 CONSOLEPI_USERS_FILE="${CONSOLEPI_USERS_FILE:-/ssh/users.conf}"
 CONSOLEPI_SYSTEM_USERS_DIR="${CONSOLEPI_SYSTEM_USERS_DIR:-/ssh/system-users}"
+CONSOLEPI_REMOTE_KEY_FILE="${CONSOLEPI_REMOTE_KEY_FILE:-/ssh/hub_spoke_ed25519}"
+CONSOLEPI_REMOTE_KEY_PUB_FILE="${CONSOLEPI_REMOTE_KEY_PUB_FILE:-/ssh/hub_spoke_ed25519.pub}"
 CONSOLEPI_GRANT_SUDO="${CONSOLEPI_GRANT_SUDO:-true}"
 ALLOWED_SSH_USERS="consolepi"
 CONSOLEPI_MENU_USERS=""
@@ -37,6 +39,29 @@ add_menu_user() {
       CONSOLEPI_MENU_USERS="${CONSOLEPI_MENU_USERS} ${user}"
       ;;
   esac
+}
+
+install_shared_remote_key_for_user() {
+  local user="$1"
+  local user_ssh_dir="/home/${user}/.ssh"
+
+  [[ -f "${CONSOLEPI_REMOTE_KEY_FILE}" ]] || return 0
+
+  install -d -m 700 -o "${user}" -g "${user}" "${user_ssh_dir}"
+  install -m 600 -o "${user}" -g "${user}" "${CONSOLEPI_REMOTE_KEY_FILE}" "${user_ssh_dir}/id_ed25519"
+
+  if [[ -f "${CONSOLEPI_REMOTE_KEY_PUB_FILE}" ]]; then
+    install -m 644 -o "${user}" -g "${user}" "${CONSOLEPI_REMOTE_KEY_PUB_FILE}" "${user_ssh_dir}/id_ed25519.pub"
+  fi
+
+  cat > "${user_ssh_dir}/config" <<'EOF'
+Host *
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+EOF
+  chown "${user}:${user}" "${user_ssh_dir}/config"
+  chmod 600 "${user_ssh_dir}/config"
 }
 
 trim_spaces() {
@@ -137,6 +162,7 @@ provision_user_from_authorized_keys() {
 
   install -d -m 700 -o "${user}" -g "${user}" "/home/${user}/.ssh"
   install -m 600 -o "${user}" -g "${user}" "${key_path}" "/home/${user}/.ssh/authorized_keys"
+  install_shared_remote_key_for_user "${user}"
 
   if command -v passwd >/dev/null 2>&1; then
     passwd -l "${user}" >/dev/null 2>&1 || true
@@ -189,6 +215,8 @@ if [[ -d "${SSH_DIR}" ]]; then
     install -d -m 700 -o consolepi -g consolepi /home/consolepi/.ssh
     install -m 600 -o consolepi -g consolepi "${SSH_DIR}/authorized_keys" /home/consolepi/.ssh/authorized_keys
   fi
+
+  install_shared_remote_key_for_user "consolepi"
 fi
 
 if [[ -f "${CONSOLEPI_USERS_FILE}" ]]; then

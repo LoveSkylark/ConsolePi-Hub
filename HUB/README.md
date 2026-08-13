@@ -202,6 +202,13 @@ Automatic host-user SSH key import (recommended):
 - imported users default to menu mode (ForceCommand launches ConsolePi menu on SSH login)
 - this lets you use Ubuntu host user key assignments directly, without maintaining `users.conf` for key-only access
 
+HUB-to-SPOKE passwordless SSH key (auto-generated):
+
+- `deploy-hub.sh` now generates `./consolepi/ssh/hub_spoke_ed25519` and `./consolepi/ssh/hub_spoke_ed25519.pub` if missing
+- the static remote cache user is set from `CONSOLEPI_REMOTE_USER` (or auto-resolved to your invoking user)
+- `ConsolePi.yaml` `rem_user` is updated to that same user on each deploy
+- use the generated public key value when running SPOKE deploy so HUB->SPOKE remote shell works without password prompts
+
 `users.conf` remains supported as an optional fallback for explicit password-hash + mode (`menu`/`shell`) provisioning.
 For legacy two-field entries (`username:password_hash`), the default mode is now `menu`.
 

@@ -16,6 +16,9 @@ CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/runtime"
 CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
 CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
 CONSOLEPI_SYSTEM_USERS_DIR="${SCRIPT_DIR}/consolepi/ssh/system-users"
+CONSOLEPI_REMOTE_USER="${CONSOLEPI_REMOTE_USER:-}"
+CONSOLEPI_HUB_SPOKE_KEY_FILE="${SCRIPT_DIR}/consolepi/ssh/hub_spoke_ed25519"
+CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE="${CONSOLEPI_HUB_SPOKE_KEY_FILE}.pub"
 WITH_CONSOLEPI="true"
 REFRESH_CONFIGS="false"
 ROTATE_KEYS="false"
@@ -29,6 +32,44 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 COMPOSE_CMD=""
 WG_HUB_CONTAINER_NAME="connectpi-wireguard-hub"
 CONSOLEPI_CONTAINER_NAME="connectpi-consolepi"
+
+resolve_consolepi_remote_user() {
+  if [[ -n "${CONSOLEPI_REMOTE_USER}" ]]; then
+    return 0
+  fi
+
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    CONSOLEPI_REMOTE_USER="${SUDO_USER}"
+    return 0
+  fi
+
+  if [[ -n "${USER:-}" && "${USER}" != "root" ]]; then
+    CONSOLEPI_REMOTE_USER="${USER}"
+    return 0
+  fi
+
+  CONSOLEPI_REMOTE_USER="consolepi"
+}
+
+ensure_hub_spoke_ssh_keypair() {
+  mkdir -p "${SCRIPT_DIR}/consolepi/ssh"
+
+  if [[ -s "${CONSOLEPI_HUB_SPOKE_KEY_FILE}" && -s "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}" ]]; then
+    chmod 600 "${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
+    chmod 644 "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
+    return 0
+  fi
+
+  if ! command -v ssh-keygen >/dev/null 2>&1; then
+    echo "OpenSSH client tools (ssh-keygen) are required to generate HUB remote SSH keypair." >&2
+    exit 1
+  fi
+
+  ssh-keygen -t ed25519 -N '' -f "${CONSOLEPI_HUB_SPOKE_KEY_FILE}" -C "connectpi-hub-to-spoke" >/dev/null
+  chmod 600 "${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
+  chmod 644 "${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
+  echo "Generated HUB-to-SPOKE SSH keypair: ${CONSOLEPI_HUB_SPOKE_KEY_FILE}"
+}
 
 prompt_required() {
   local label="$1"
@@ -255,6 +296,8 @@ print_deployment_summary() {
   else
     echo "Direct management SSH port: 2222/tcp"
   fi
+  echo "ConsolePi remote SSH user: ${CONSOLEPI_REMOTE_USER}"
+  echo "ConsolePi remote SSH public key: ${CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE}"
 
   print_hub_public_keys
   print_runtime_status
@@ -754,8 +797,9 @@ seed_consolepi_remote_cache() {
   echo "WARNING: python3 not found on host, skipping static ConsolePi remote cache generation." >&2
   return 0
   fi
+  resolve_consolepi_remote_user
 
-  CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_CLOUD_CACHE_FILE}" python3 - <<'PY'
+  CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_CLOUD_CACHE_FILE}" CONSOLEPI_REMOTE_USER="${CONSOLEPI_REMOTE_USER}" python3 - <<'PY'
 import json
 import os
 import re
@@ -803,12 +847,13 @@ def build_entries(prefix: str, profile: str, subnet: str):
       "rem_ip": peer_ip,
       "source": "static",
       "upd_time": now,
-      "user": "consolepi",
+      "user": remote_user,
     }
   return entries
 
 
 cache_file = os.environ["CONSOLEPI_CLOUD_CACHE_FILE"]
+remote_user = os.environ.get("CONSOLEPI_REMOTE_USER", "consolepi")
 trusted_subnet = os.environ.get("WG_TRUSTED_SUBNET", "")
 untrusted_subnet = os.environ.get("WG_UNTRUSTED_SUBNET", "")
 
@@ -824,6 +869,30 @@ with open(cache_file, "w", encoding="utf-8") as f:
 
 print(f"Wrote static ConsolePi remote cache: {cache_file} ({len(data)} entries)")
 PY
+}
+
+set_consolepi_runtime_remote_user() {
+  local config_file="${CONSOLEPI_RUNTIME_CONFIG_FILE}"
+  local tmp_file
+
+  resolve_consolepi_remote_user
+
+  [[ -f "${config_file}" ]] || return 0
+
+  tmp_file="$(mktemp)"
+  awk -v remote_user="${CONSOLEPI_REMOTE_USER}" '
+    BEGIN { replaced = 0 }
+    {
+      if (!replaced && $1 == "rem_user:") {
+        print "  rem_user: " remote_user " # The user account remotes should use to access this ConsolePi"
+        replaced = 1
+        next
+      }
+      print
+    }
+  ' "${config_file}" > "${tmp_file}"
+
+  mv "${tmp_file}" "${config_file}"
 }
 
 sync_consolepi_users_from_host() {
@@ -928,8 +997,11 @@ resolve_compose_command
 
 chmod +x "${RENDER_SCRIPT}"
 "${RENDER_SCRIPT}"
+resolve_consolepi_remote_user
+ensure_hub_spoke_ssh_keypair
 seed_consolepi_remote_cache
 sync_consolepi_users_from_host
+set_consolepi_runtime_remote_user
 
 if [[ "${REFRESH_CONFIGS}" == "true" ]]; then
   if [[ -f "${TRUSTED_ACTIVE}" ]]; then

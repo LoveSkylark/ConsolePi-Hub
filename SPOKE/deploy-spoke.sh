@@ -16,6 +16,8 @@ CONSOLEPI_PRESEED_FILE="${CONSOLEPI_PRESEED_DIR}/install.conf"
 CONSOLEPI_PASSWORD=""
 PRESEED_REMOVED="false"
 KEEP_PRESEED="false"
+HUB_REMOTE_SSH_USER="${HUB_REMOTE_SSH_USER:-}"
+HUB_REMOTE_SSH_PUBKEY="${HUB_REMOTE_SSH_PUBKEY:-}"
 
 is_valid_ipv4() {
   local ip="$1"
@@ -213,6 +215,53 @@ WG_SUBNET=${WG_SUBNET}
 WG_SPOKE=${WG_SPOKE}
 HUB_PUBLIC_KEY=${HUB_PUBLIC_KEY}
 EOF
+
+  printf 'HUB_REMOTE_SSH_USER=%q\n' "${HUB_REMOTE_SSH_USER}" >> "${ENV_FILE}"
+  printf 'HUB_REMOTE_SSH_PUBKEY=%q\n' "${HUB_REMOTE_SSH_PUBKEY}" >> "${ENV_FILE}"
+}
+
+is_valid_ssh_public_key() {
+  local key="$1"
+
+  [[ "${key}" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]]+[A-Za-z0-9+/=]+([[:space:]].*)?$ ]]
+}
+
+resolve_default_remote_ssh_user() {
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+    printf '%s' "${SUDO_USER}"
+    return 0
+  fi
+
+  if [[ -n "${USER:-}" && "${USER}" != "root" ]]; then
+    printf '%s' "${USER}"
+    return 0
+  fi
+
+  printf '%s' "consolepi"
+}
+
+ensure_hub_remote_ssh_access() {
+  local target_user="$1"
+  local target_key="$2"
+  local target_home
+  local target_auth_keys
+
+  if ! id "${target_user}" >/dev/null 2>&1; then
+    ${SUDO} useradd -m -s /bin/bash "${target_user}"
+  fi
+
+  target_home="$(${SUDO} getent passwd "${target_user}" | awk -F: '{print $6}')"
+  [[ -n "${target_home}" ]] || target_home="/home/${target_user}"
+  target_auth_keys="${target_home}/.ssh/authorized_keys"
+
+  ${SUDO} install -d -m 700 -o "${target_user}" -g "${target_user}" "${target_home}/.ssh"
+  ${SUDO} touch "${target_auth_keys}"
+  ${SUDO} chown "${target_user}:${target_user}" "${target_auth_keys}"
+  ${SUDO} chmod 600 "${target_auth_keys}"
+
+  if ! ${SUDO} grep -Fqx "${target_key}" "${target_auth_keys}"; then
+    printf '%s\n' "${target_key}" | ${SUDO} tee -a "${target_auth_keys}" >/dev/null
+  fi
 }
 
 ensure_wg_command() {
@@ -288,6 +337,7 @@ print_deployment_summary() {
   echo "Spoke public key: ${SPOKE_PUBLIC_KEY}"
   echo "Spoke private key file: ${SPOKE_PRIVATE_KEY_FILE}"
   echo "Spoke public key file: ${SPOKE_PUBLIC_KEY_FILE}"
+  echo "Remote SSH user for HUB access: ${HUB_REMOTE_SSH_USER}"
 
   if [[ "${PRESEED_REMOVED}" == "true" ]]; then
     echo "ConsolePi preseed file: removed after successful install"
@@ -710,6 +760,23 @@ if is_placeholder_value "${HUB_PUBLIC_KEY}" "CHANGE_ME_HUB_PUBLIC_KEY"; then
   exit 1
 fi
 
+if [[ -z "${HUB_REMOTE_SSH_USER}" ]]; then
+  HUB_REMOTE_SSH_USER="$(prompt_required "Remote SSH user that HUB should use" "$(resolve_default_remote_ssh_user)")"
+fi
+
+while true; do
+  if [[ -z "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
+    HUB_REMOTE_SSH_PUBKEY="$(prompt_required "HUB remote SSH public key (from HUB consolepi/ssh/hub_spoke_ed25519.pub)")"
+  fi
+
+  if is_valid_ssh_public_key "${HUB_REMOTE_SSH_PUBKEY}"; then
+    break
+  fi
+
+  echo "Invalid SSH public key format. Paste a full key line such as ssh-ed25519 AAAA..."
+  HUB_REMOTE_SSH_PUBKEY=""
+done
+
 ${SUDO} apt-get update
 ${SUDO} apt-get install -y wireguard
 
@@ -769,6 +836,7 @@ fi
 
 configure_consolepi_api_only_mode
 harden_consolepi_account
+ensure_hub_remote_ssh_access "${HUB_REMOTE_SSH_USER}" "${HUB_REMOTE_SSH_PUBKEY}"
 
 echo
 echo "Install complete."

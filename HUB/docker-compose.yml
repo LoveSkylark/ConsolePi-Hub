@@ -43,6 +43,8 @@ services:
       - CONSOLEPI_USERS_FILE=${CONSOLEPI_USERS_FILE:-/ssh/users.conf}
       - CONSOLEPI_SYSTEM_USERS_DIR=${CONSOLEPI_SYSTEM_USERS_DIR:-/ssh/system-users}
       - CONSOLEPI_DEFAULT_USER_MODE=${CONSOLEPI_DEFAULT_USER_MODE:-menu}
+      - CONSOLEPI_REMOTE_KEY_FILE=${CONSOLEPI_REMOTE_KEY_FILE:-/ssh/hub_spoke_ed25519}
+      - CONSOLEPI_REMOTE_KEY_PUB_FILE=${CONSOLEPI_REMOTE_KEY_PUB_FILE:-/ssh/hub_spoke_ed25519.pub}
     volumes:
       - ./consolepi:/consolepi
       - ./consolepi/ssh:/ssh

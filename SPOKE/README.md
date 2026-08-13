@@ -81,6 +81,9 @@ At the end it prints the spoke public key so you can register it on the HUB if n
 1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
 2. If values are missing, `deploy-spoke.sh` prompts for:
 	`HUB_PROFILE`, `WG_SUBNET`, `WG_SPOKE`, `HUB_ENDPOINT`, and `HUB_PUBLIC_KEY`.
+3. The script also prompts for HUB remote shell access values on first run:
+	`HUB_REMOTE_SSH_USER` and `HUB_REMOTE_SSH_PUBKEY`.
+4. Use the HUB-generated key from `HUB/consolepi/ssh/hub_spoke_ed25519.pub` as `HUB_REMOTE_SSH_PUBKEY`.
 3. On second and later runs, it uses the values already in `.env` and only rebuilds the spoke config.
 
 Derived values:
