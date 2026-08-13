@@ -809,9 +809,18 @@ fi
 ${SUDO} apt-get update
 ${SUDO} apt-get install -y wireguard
 
-if [[ "${NEW_KEY_REQUESTED}" == "true" ]] || is_placeholder_value "${SPOKE_PRIVATE_KEY:-}" "CHANGE_ME_SPOKE_PRIVATE_KEY"; then
+if [[ "${NEW_KEY_REQUESTED}" == "true" ]]; then
   SPOKE_PRIVATE_KEY="$(generate_spoke_private_key)"
   echo "Generated spoke private key."
+else
+  if is_placeholder_value "${SPOKE_PRIVATE_KEY:-}" "CHANGE_ME_SPOKE_PRIVATE_KEY"; then
+    SPOKE_PRIVATE_KEY="$(resolve_private_key_from_state 2>/dev/null || true)"
+  fi
+
+  if [[ -z "${SPOKE_PRIVATE_KEY:-}" ]]; then
+    SPOKE_PRIVATE_KEY="$(generate_spoke_private_key)"
+    echo "Generated spoke private key."
+  fi
 fi
 
 SPOKE_PUBLIC_KEY="$(derive_public_key_from_private_key "${SPOKE_PRIVATE_KEY}")"
