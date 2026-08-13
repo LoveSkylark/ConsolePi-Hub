@@ -34,3 +34,12 @@ Files intended to stay out of git are ignored at the repo root:
 - Spoke setup: `SPOKE/README.md`
 - Spoke deploy tool: `SPOKE/deploy-spoke.sh`
 - Hub peer helper: `HUB/wireguard/register-peer.sh`
+
+## Direct SPOKE install
+
+Run on a Raspberry Pi to install/update the SPOKE tooling and deploy:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
+```
+
