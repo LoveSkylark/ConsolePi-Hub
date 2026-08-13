@@ -16,7 +16,7 @@ CONSOLEPI_RUNTIME_DIR="${SCRIPT_DIR}/consolepi/runtime"
 CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_RUNTIME_DIR}/cloud.json"
 CONSOLEPI_RUNTIME_CONFIG_FILE="${CONSOLEPI_RUNTIME_DIR}/ConsolePi.yaml"
 CONSOLEPI_SYSTEM_USERS_DIR="${SCRIPT_DIR}/consolepi/ssh/system-users"
-CONSOLEPI_REMOTE_USER="${CONSOLEPI_REMOTE_USER:-}"
+CONSOLEPI_REMOTE_USER="consolepi"
 CONSOLEPI_HUB_SPOKE_KEY_FILE="${SCRIPT_DIR}/consolepi/ssh/hub_spoke_ed25519"
 CONSOLEPI_HUB_SPOKE_KEY_PUB_FILE="${CONSOLEPI_HUB_SPOKE_KEY_FILE}.pub"
 WITH_CONSOLEPI="true"
@@ -34,22 +34,8 @@ COMPOSE_CMD=""
 WG_HUB_CONTAINER_NAME="connectpi-wireguard-hub"
 CONSOLEPI_CONTAINER_NAME="connectpi-consolepi"
 
-resolve_consolepi_remote_user() {
-  if [[ -n "${CONSOLEPI_REMOTE_USER}" ]]; then
-    return 0
-  fi
-
-  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-    CONSOLEPI_REMOTE_USER="${SUDO_USER}"
-    return 0
-  fi
-
-  if [[ -n "${USER:-}" && "${USER}" != "root" ]]; then
-    CONSOLEPI_REMOTE_USER="${USER}"
-    return 0
-  fi
-
-  CONSOLEPI_REMOTE_USER="consolepi"
+persist_consolepi_remote_user() {
+  upsert_env_value "CONSOLEPI_REMOTE_USER" "${CONSOLEPI_REMOTE_USER}"
 }
 
 ensure_hub_spoke_ssh_keypair() {
@@ -792,8 +778,6 @@ seed_consolepi_remote_cache() {
   echo "WARNING: python3 not found on host, skipping static ConsolePi remote cache generation." >&2
   return 0
   fi
-  resolve_consolepi_remote_user
-
   CONSOLEPI_CLOUD_CACHE_FILE="${CONSOLEPI_CLOUD_CACHE_FILE}" CONSOLEPI_REMOTE_USER="${CONSOLEPI_REMOTE_USER}" python3 - <<'PY'
 import json
 import os
@@ -869,8 +853,6 @@ PY
 set_consolepi_runtime_remote_user() {
   local config_file="${CONSOLEPI_RUNTIME_CONFIG_FILE}"
   local tmp_file
-
-  resolve_consolepi_remote_user
 
   [[ -f "${config_file}" ]] || return 0
 
@@ -998,12 +980,12 @@ if [[ "${STATUS_ONLY}" == "true" ]]; then
 fi
 
 ensure_required_env_values
+persist_consolepi_remote_user
 
 resolve_compose_command
 
 chmod +x "${RENDER_SCRIPT}"
 "${RENDER_SCRIPT}"
-resolve_consolepi_remote_user
 ensure_hub_spoke_ssh_keypair
 seed_consolepi_remote_cache
 sync_consolepi_users_from_host

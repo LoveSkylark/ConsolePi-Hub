@@ -19,7 +19,6 @@ KEEP_PRESEED="false"
 HUB_REMOTE_SSH_USER="${HUB_REMOTE_SSH_USER:-}"
 HUB_REMOTE_SSH_PUBKEY="${HUB_REMOTE_SSH_PUBKEY:-}"
 HUB_REMOTE_SSH_PUBKEY_FILE="${HUB_REMOTE_SSH_PUBKEY_FILE:-${SCRIPT_DIR}/../HUB/consolepi/ssh/hub_spoke_ed25519.pub}"
-HUB_ENV_FILE="${HUB_ENV_FILE:-${SCRIPT_DIR}/../HUB/.env}"
 
 is_valid_ipv4() {
   local ip="$1"
@@ -228,39 +227,6 @@ is_valid_ssh_public_key() {
   [[ "${key}" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))[[:space:]]+[A-Za-z0-9+/=]+([[:space:]].*)?$ ]]
 }
 
-resolve_default_remote_ssh_user() {
-  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-    printf '%s' "${SUDO_USER}"
-    return 0
-  fi
-
-  if [[ -n "${USER:-}" && "${USER}" != "root" ]]; then
-    printf '%s' "${USER}"
-    return 0
-  fi
-
-  printf '%s' "consolepi"
-}
-
-resolve_hub_remote_ssh_user() {
-  local from_hub_env=""
-
-  if [[ -n "${HUB_REMOTE_SSH_USER}" ]]; then
-    return 0
-  fi
-
-  if [[ -f "${HUB_ENV_FILE}" ]]; then
-    from_hub_env="$(awk -F= '/^CONSOLEPI_REMOTE_USER=/{print $2; exit}' "${HUB_ENV_FILE}" | tr -d '[:space:]')"
-  fi
-
-  if [[ -n "${from_hub_env}" ]]; then
-    HUB_REMOTE_SSH_USER="${from_hub_env}"
-    return 0
-  fi
-
-  HUB_REMOTE_SSH_USER="$(resolve_default_remote_ssh_user)"
-}
-
 resolve_hub_remote_ssh_pubkey() {
   if [[ -n "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
     return 0
@@ -279,6 +245,8 @@ ensure_hub_remote_ssh_access() {
 
   if ! id "${target_user}" >/dev/null 2>&1; then
     ${SUDO} useradd -m -s /bin/bash "${target_user}"
+  else
+    ${SUDO} usermod -s /bin/bash "${target_user}" >/dev/null 2>&1 || true
   fi
 
   target_home="$(${SUDO} getent passwd "${target_user}" | awk -F: '{print $6}')"
@@ -791,7 +759,7 @@ if is_placeholder_value "${HUB_PUBLIC_KEY}" "CHANGE_ME_HUB_PUBLIC_KEY"; then
   exit 1
 fi
 
-resolve_hub_remote_ssh_user
+HUB_REMOTE_SSH_USER="consolepi"
 resolve_hub_remote_ssh_pubkey
 
 if [[ -z "${HUB_REMOTE_SSH_PUBKEY}" ]]; then

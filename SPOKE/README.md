@@ -16,10 +16,10 @@ Deploy the base OS image on the spoke Pi itself (microSD or USB boot media), not
 2. Choose OS: Raspberry Pi OS Lite (64-bit, Bookworm).
 3. Choose storage: the microSD/USB that will live in the spoke Pi.
 4. In advanced options before writing:
-	- set hostname (example: `connectpi-spoke-01`)
-	- enable SSH
-	- set username/password or SSH public key
-	- set locale/timezone/Wi-Fi if needed
+   - set hostname (example: `connectpi-spoke-01`)
+   - enable SSH
+   - set username/password or SSH public key
+   - set locale/timezone/Wi-Fi if needed
 5. Write image, insert media into the Pi, and boot it.
 6. Log in to the Pi and continue with the deploy steps below.
 
@@ -80,12 +80,12 @@ At the end it prints the spoke public key so you can register it on the HUB if n
 
 1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
 2. If values are missing, `deploy-spoke.sh` prompts for:
-	`HUB_PROFILE`, `WG_SUBNET`, `WG_SPOKE`, `HUB_ENDPOINT`, and `HUB_PUBLIC_KEY`.
+   `HUB_PROFILE`, `WG_SUBNET`, `WG_SPOKE`, `HUB_ENDPOINT`, and `HUB_PUBLIC_KEY`.
 3. HUB remote shell access values are auto-resolved by default:
-	`HUB_REMOTE_SSH_USER` defaults to `CONSOLEPI_REMOTE_USER` from `../HUB/.env` when present, otherwise the current user.
+   `HUB_REMOTE_SSH_USER` is fixed to `consolepi`.
 4. `HUB_REMOTE_SSH_PUBKEY` auto-loads from `../HUB/consolepi/ssh/hub_spoke_ed25519.pub` when available.
-5. Override manually only when needed by exporting `HUB_REMOTE_SSH_USER` or `HUB_REMOTE_SSH_PUBKEY` before running deploy.
-3. On second and later runs, it uses the values already in `.env` and only rebuilds the spoke config.
+5. Override manually only when needed by exporting `HUB_REMOTE_SSH_PUBKEY` before running deploy.
+6. On second and later runs, it uses the values already in `.env` and only rebuilds the spoke config.
 
 Derived values:
 
