@@ -244,6 +244,7 @@ ensure_hub_remote_ssh_access() {
   local target_key="$2"
   local target_home
   local target_auth_keys
+  local target_group
 
   if ! id "${target_user}" >/dev/null 2>&1; then
     ${SUDO} useradd -m -s /bin/bash "${target_user}"
@@ -251,17 +252,23 @@ ensure_hub_remote_ssh_access() {
     ${SUDO} usermod -s /bin/bash "${target_user}" >/dev/null 2>&1 || true
   fi
 
+  target_group="$(${SUDO} id -gn "${target_user}")"
   target_home="$(${SUDO} getent passwd "${target_user}" | awk -F: '{print $6}')"
   [[ -n "${target_home}" ]] || target_home="/home/${target_user}"
   target_auth_keys="${target_home}/.ssh/authorized_keys"
 
-  ${SUDO} install -d -m 700 -o "${target_user}" -g "${target_user}" "${target_home}/.ssh"
+  ${SUDO} install -d -m 700 -o "${target_user}" -g "${target_group}" "${target_home}/.ssh"
   ${SUDO} touch "${target_auth_keys}"
-  ${SUDO} chown "${target_user}:${target_user}" "${target_auth_keys}"
+  ${SUDO} chown "${target_user}:${target_group}" "${target_auth_keys}"
   ${SUDO} chmod 600 "${target_auth_keys}"
 
   if ! ${SUDO} grep -Fqx "${target_key}" "${target_auth_keys}"; then
     printf '%s\n' "${target_key}" | ${SUDO} tee -a "${target_auth_keys}" >/dev/null
+  fi
+
+  if ! ${SUDO} grep -Fqx "${target_key}" "${target_auth_keys}"; then
+    echo "Failed to install HUB remote SSH key for ${target_user}." >&2
+    exit 1
   fi
 }
 

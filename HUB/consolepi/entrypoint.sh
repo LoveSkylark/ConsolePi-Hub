@@ -105,6 +105,28 @@ menu_path.write_text(pattern.sub(replacement, src, count=1))
 PY
 }
 
+ensure_consolepi_resize_helper() {
+  local resize_cmd="${CONSOLEPI_HOME}/src/consolepi-commands/resize"
+
+  if [[ -x "${resize_cmd}" ]]; then
+    return 0
+  fi
+
+  install -d -m 755 "$(dirname "${resize_cmd}")"
+  cat > "${resize_cmd}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Compatibility shim for images where ConsolePi's resize helper is missing.
+if command -v resize >/dev/null 2>&1; then
+  resize >/dev/null 2>&1 || true
+fi
+
+exit 0
+EOF
+  chmod 755 "${resize_cmd}"
+}
+
 provision_user_from_file() {
   local user="$1"
   local login_mode="$2"
@@ -188,6 +210,7 @@ chmod 0666 /var/log/ConsolePi/consolepi.log
 
 # Workaround for upstream ConsolePi bug when Remote Shell menu has no entries.
 apply_consolepi_rshell_empty_fix
+ensure_consolepi_resize_helper
 
 # Seed runtime config from example only if one does not exist yet.
 if [[ ! -f "${RUNTIME_DIR}/ConsolePi.yaml" ]]; then
