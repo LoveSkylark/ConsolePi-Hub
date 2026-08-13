@@ -218,7 +218,6 @@ HUB_PUBLIC_KEY=${HUB_PUBLIC_KEY}
 EOF
 
   printf 'HUB_REMOTE_SSH_USER=%q\n' "${HUB_REMOTE_SSH_USER}" >> "${ENV_FILE}"
-  printf 'HUB_REMOTE_SSH_PUBKEY=%q\n' "${HUB_REMOTE_SSH_PUBKEY}" >> "${ENV_FILE}"
 }
 
 is_valid_ssh_public_key() {
@@ -228,12 +227,15 @@ is_valid_ssh_public_key() {
 }
 
 resolve_hub_remote_ssh_pubkey() {
-  if [[ -n "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
-    return 0
-  fi
-
   if [[ -f "${HUB_REMOTE_SSH_PUBKEY_FILE}" ]]; then
+    if [[ -n "${HUB_REMOTE_SSH_PUBKEY}" ]]; then
+      existing_key="$(awk 'NF {print; exit}' "${HUB_REMOTE_SSH_PUBKEY_FILE}")"
+      if [[ -n "${existing_key}" && "${HUB_REMOTE_SSH_PUBKEY}" != "${existing_key}" ]]; then
+        echo "Ignoring stale HUB_REMOTE_SSH_PUBKEY from env; using ${HUB_REMOTE_SSH_PUBKEY_FILE}."
+      fi
+    fi
     HUB_REMOTE_SSH_PUBKEY="$(awk 'NF {print; exit}' "${HUB_REMOTE_SSH_PUBKEY_FILE}")"
+    return 0
   fi
 }
 
@@ -664,6 +666,17 @@ harden_consolepi_account() {
   local nologin_shell=""
 
   if ! id consolepi >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Shared HUB->SPOKE auth mode uses consolepi for non-interactive key-based access.
+  # Keep this account login-capable in that mode.
+  if [[ "${HUB_REMOTE_SSH_USER:-}" == "consolepi" ]]; then
+    if command -v passwd >/dev/null 2>&1; then
+      ${SUDO} passwd -u consolepi >/dev/null 2>&1 || true
+    fi
+    ${SUDO} usermod -s /bin/bash consolepi >/dev/null 2>&1 || true
+    echo "ConsolePi account kept unlocked for shared HUB->SPOKE SSH access."
     return 0
   fi
 
