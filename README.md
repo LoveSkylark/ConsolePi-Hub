@@ -46,6 +46,6 @@ runs the matching deploy script (`SPOKE/deploy-spoke.sh` or
 `CONSOLEPI_SPOKE_KIND=pi` or `CONSOLEPI_SPOKE_KIND=debian` if needed.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
+wget -qO- https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
 ```
 
