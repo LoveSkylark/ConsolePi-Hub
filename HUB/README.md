@@ -9,7 +9,8 @@ This folder contains a Docker Compose based HUB baseline:
 
 Once the HUB and SPOKE are pointed at each other, most of the runtime layout is deterministic.
 The remaining manual inputs are the connection-specific values in `.env` such as profile,
-peer slots, tunnel endpoints, and peer keys.
+peer slots, tunnel endpoints, and peer keys. See [How the HUB and SPOKE connect](#how-the-hub-and-spoke-connect)
+for the complete setup and connection flow.
 
 If `.env` is missing, `deploy-hub.sh` prompts for the management SSH settings and
 the trusted/untrusted `/24` subnets, writes a minimal `.env`, and continues.
@@ -78,29 +79,113 @@ Re-run behavior:
 - warns if new peers still have placeholder public keys
 - if HUB private key placeholders are detected, generates the missing keys automatically
 
+## How the HUB and SPOKE connect
+
+The HUB is the reachable WireGuard server. Each spoke may be on another LAN, behind a home
+router, behind cellular NAT, or at a different site. The spoke does not need a fixed public
+IP address. It only needs:
+
+- outbound UDP access to the HUB's public IP address or DNS name
+- the correct HUB endpoint, profile port, and HUB public key in its `.env`
+- its own private key and tunnel address
+
+The HUB does need to be reachable from the Internet or from the relevant private network:
+
+- forward UDP `51820` to the HUB host for the untrusted profile
+- forward UDP `51821` to the HUB host for the trusted profile
+- use the actual values if `WG_UNTRUSTED_PORT` or `WG_TRUSTED_PORT` were overridden
+
+The spoke initiates the handshake by sending UDP traffic to the HUB endpoint. WireGuard then
+remembers the spoke's latest public endpoint. `PersistentKeepalive=25` sends a small packet
+about every 25 seconds, which keeps common NAT mappings open and allows the HUB to return
+traffic to a spoke whose address changes. The HUB does not need to know the spoke's public
+IP address in advance.
+
+After the initial WireGuard handshake, the HUB ConsolePi API can exchange data with the spoke
+over the tunnel. These API requests use the spoke's assigned tunnel IP rather than its changing
+public/NAT address:
+
+- HUB-to-SPOKE ConsolePi API traffic uses TCP port `5000` over the WireGuard tunnel.
+- The API is intended to remain reachable through the tunnel, not through a public Internet port.
+
+SSH is separate from the WireGuard handshake and API exchange. It is a user-authorized connection
+started after the tunnel is established:
+
+- A HUB user may start SSH to a SPOKE tunnel IP through the ConsolePi GUI, using the shared
+  `hub_spoke_ed25519` key.
+- Only a trusted-profile SPOKE may manually SSH to HUB ConsolePi.
+- An untrusted-profile SPOKE may use the tunnel for its permitted traffic, but SSH to HUB ConsolePi
+  is blocked by the HUB interface policy.
+
+```mermaid
+sequenceDiagram
+  participant S as SPOKE
+   participant I as Internet<br/>or routed network
+   participant F as HUB firewall/router<br/>UDP port forward
+  participant H as HUB WireGuard
+  participant C as HUB ConsolePi
+
+  S->>I: Outbound UDP to HUB public IP/DNS
+  I->>F: Routed or NAT traffic
+  F->>H: Forward UDP to trusted or untrusted port
+   Note over S,H: The spoke may have a changing/private public endpoint
+  H-->>F: Encrypted WireGuard response
+  F-->>S: Return UDP traffic through the existing NAT mapping
+   S->>H: Keepalive every 25 seconds
+  H-->>S: Encrypted tunnel traffic
+  C->>H: HUB ConsolePi starts API (5000) session
+  H->>S: HUB API request to spoke TCP 5000
+  S-->>H: API response
+  H-->>C: API response reaches HUB ConsolePi
+  Note over S,C: INITIAL CONNECTION AND API EXCHANGE COMPLETE<br/>User-authorized SSH connections are shown below
+  C->>H: HUB user starts SSH through ConsolePi GUI
+  H->>S: SSH from HUB ConsolePi to SPOKE tunnel IP
+  S-->>H: SSH response to HUB ConsolePi
+  H-->>C: SSH response reaches HUB ConsolePi
+  S->>H: Trusted SPOKE user starts manual SSH connection
+  H->>C: SSH from SPOKE to HUB ConsolePi
+  C-->>H: SSH response to SPOKE
+  H-->>S: SSH response reaches trusted SPOKE
+```
+
+### Registration and deployment order
+
+The public keys identify the two ends of the tunnel. A public key is not a secret; private keys
+must remain on their original device.
+
+1. Deploy the HUB with `./deploy-hub.sh`. It creates the trusted and untrusted WireGuard interfaces,
+  assigns each interface a `.1` tunnel address, and starts the WireGuard container.
+1. Deploy the SPOKE with `./deploy-spoke.sh`. Choose `trusted` or `untrusted`, set the HUB endpoint,
+  and let the script generate the spoke keypair and rendered WireGuard profile.
+1. Copy or note the spoke public key printed by the spoke deployment.
+1. On the HUB, run `./wireguard/register-peer.sh` and choose the same profile and slot.
+  The slot determines the spoke tunnel IP: slot `2` becomes `.12`.
+1. When prompted for the HUB name, press Enter to accept the profile-specific default:
+  `spoke-u-02` for untrusted slot `2` or `spoke-t-02` for trusted slot `2`.
+  You can enter a custom name instead. This name is a peer comment and snippet label; it does
+  not affect routing or authentication.
+1. Re-deploy the HUB so the registered public key is present in the active WireGuard configuration.
+1. Apply or re-render the SPOKE profile, then start or restart `wg-quick@wg0` on the spoke.
+1. Verify both ends with `wg show`. A successful handshake confirms WireGuard connectivity;
+  the tunnel IP and profile policy determine what the spoke may access.
+
+Example address allocation with the default subnets:
+
+| Profile | HUB tunnel IP | Slot 2 spoke IP | UDP port | ConsolePi SSH |
+| --- | --- | --- | --- | --- |
+| Trusted | `10.99.99.1` | `10.99.99.12` | `51821` | Allowed |
+| Untrusted | `10.99.98.1` | `10.99.98.12` | `51820` | Blocked |
+
+The HUB and spoke must use matching profile, slot, subnet, and keys. A trusted spoke pointed at
+the untrusted subnet, or a slot registered with the wrong public key, will not produce the
+expected connection.
+
 1. Optional: copy `.env.example` to `.env` if you want to preseed values before first deploy.
 1. Render profile templates from `.env`:
 
 ```bash
 chmod +x wireguard/render-profile-configs.sh
 ./wireguard/render-profile-configs.sh
-```
-
-1. Copy templates to active configs and set keys:
-
-```bash
-cp wireguard/trusted/config/wg_confs/wg-trusted.conf.example wireguard/trusted/config/wg_confs/wg-trusted.conf
-cp wireguard/untrusted/config/wg_confs/wg-untrusted.conf.example wireguard/untrusted/config/wg_confs/wg-untrusted.conf
-```
-
-1. Replace all key placeholders in both active `.conf` files.
-1. Set strict key permissions on host:
-
-```bash
-chmod 700 wireguard/trusted/config wireguard/trusted/config/wg_confs
-chmod 700 wireguard/untrusted/config wireguard/untrusted/config/wg_confs
-chmod 600 wireguard/trusted/config/wg_confs/wg-trusted.conf
-chmod 600 wireguard/untrusted/config/wg_confs/wg-untrusted.conf
 ```
 
 To register a new spoke peer on the HUB after initial setup:
@@ -113,7 +198,7 @@ chmod +x wireguard/register-peer.sh
 The helper will:
 
 - ask for trusted or untrusted profile
-- ask for peer slot index, optional peer label, and peer public key
+- ask for peer slot index, optional hub name, and peer public key
 - update the matching `WG_*_PEER_KEY_N` slot in `.env`
 - rerender the example templates
 - append the live peer stanza to the active hub config if it exists
@@ -155,7 +240,7 @@ docker compose exec consolepi bash
 consolepi-menu
 ```
 
-WireGuard peers can reach ConsolePi over the hub WireGuard IP using SSH:
+Trusted WireGuard peers can reach ConsolePi over the hub WireGuard IP using SSH:
 
 - target: trusted profile hub IP on port `22` (for example `10.99.99.1:22`)
 - username: `consolepi`
@@ -205,7 +290,7 @@ Automatic host-user SSH key import (recommended):
 HUB-to-SPOKE passwordless SSH key (auto-generated):
 
 - `deploy-hub.sh` now generates `./consolepi/ssh/hub_spoke_ed25519` and `./consolepi/ssh/hub_spoke_ed25519.pub` if missing
-- the static remote cache user is set from `CONSOLEPI_REMOTE_USER` (or auto-resolved to your invoking user)
+- the static HUB-to-SPOKE remote user is `consolepi`
 - `ConsolePi.yaml` `rem_user` is updated to that same user on each deploy
 - use the generated public key value when running SPOKE deploy so HUB->SPOKE remote shell works without password prompts
 
@@ -242,14 +327,9 @@ Use two client profile classes:
 - Profile A (untrusted): VPN tunnel up, but blocked from ConsolePi SSH.
 - Profile B (trusted): VPN tunnel up and permitted to access ConsolePi SSH.
 
-Three example templates are provided for each class:
-
-- `wireguard/profiles/profile-A1-untrusted.conf.example`
-- `wireguard/profiles/profile-A2-untrusted.conf.example`
-- `wireguard/profiles/profile-A3-untrusted.conf.example`
-- `wireguard/profiles/profile-B1-trusted.conf.example`
-- `wireguard/profiles/profile-B2-trusted.conf.example`
-- `wireguard/profiles/profile-B3-trusted.conf.example`
+`render-profile-configs.sh` generates one client profile example for each registered peer slot
+under `wireguard/profiles/`. Untrusted profiles use the `profile-A<N>-untrusted.conf.example`
+pattern; trusted profiles use `profile-B<N>-trusted.conf.example`.
 
 Hub tunnel templates are also provided:
 
@@ -283,7 +363,7 @@ You can also use the HUB registration helper non-interactively:
 ./wireguard/register-peer.sh \
   --profile trusted \
   --slot 4 \
-  --peer-name spoke-b4 \
+  --hub-name spoke-b4 \
   --public-key <SPOKE_PUBLIC_KEY>
 ```
 
@@ -308,5 +388,26 @@ You can also use the HUB registration helper non-interactively:
 ## 6) Isolation model in this stack
 
 - Each spoke peer should remain `/32` in `AllowedIPs`.
-- Keep trusted and untrusted peers in separate profile subnets and containers.
-- Keep any host-level forwarding changes in sync with this design.
+- Keep trusted and untrusted peers in separate profile subnets and interfaces within the
+  `wireguard-hub` container.
+- The generated trusted and untrusted interfaces add an explicit `wg -> wg` forwarding drop,
+  preventing one spoke from reaching another through the HUB.
+- ConsolePi SSH access is separately filtered by interface: trusted peers are allowed and
+  untrusted peers are denied.
+- Spoke ConsolePi API access uses TCP `5000` over the tunnel and is not exposed as a public port.
+
+The current Docker deployment owns WireGuard configuration, key generation, interface setup,
+permissions, and isolation rules. Do not create a separate host `wg0.conf`, manually copy the
+generated profile files, or apply the old single-interface forwarding instructions. Use
+`deploy-hub.sh` and `deploy-spoke.sh` so both sides stay aligned with the trusted/untrusted design.
+
+For a basic post-deployment check:
+
+```bash
+docker compose ps
+docker compose exec wireguard-hub wg show
+docker compose logs --tail=100 wireguard-hub
+```
+
+On a trusted spoke, verify the HUB ConsolePi API over the tunnel. On an untrusted spoke, verify
+the WireGuard handshake and permitted tunnel traffic, but expect SSH to HUB ConsolePi to fail.

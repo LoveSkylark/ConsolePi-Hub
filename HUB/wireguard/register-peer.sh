@@ -10,7 +10,7 @@ DRY_RUN="false"
 
 PROFILE=""
 SLOT=""
-PEER_NAME=""
+HUB_NAME=""
 PUBLIC_KEY=""
 
 usage() {
@@ -20,7 +20,7 @@ Usage: ./wireguard/register-peer.sh [options]
 Options:
   --profile trusted|untrusted
   --slot N                  Peer slot index (N maps to host .(10 + N))
-  --peer-name NAME          Optional label used in comments/snippet filename
+  --hub-name NAME           Optional hub name used in comments/snippet filename
   --public-key KEY
   --dry-run
   --help
@@ -159,8 +159,8 @@ while [[ $# -gt 0 ]]; do
       SLOT="${2:-}"
       shift 2
       ;;
-    --peer-name)
-      PEER_NAME="${2:-}"
+    --hub-name)
+      HUB_NAME="${2:-}"
       shift 2
       ;;
     --public-key)
@@ -229,6 +229,15 @@ validate_slot "${SLOT}" || {
   exit 1
 }
 
+if [[ -z "${HUB_NAME}" ]]; then
+  if [[ "${PROFILE}" == "untrusted" ]]; then
+    default_hub_name="spoke-u-$(printf '%02d' "${SLOT}")"
+  else
+    default_hub_name="spoke-t-$(printf '%02d' "${SLOT}")"
+  fi
+  HUB_NAME="$(prompt_required "HUB name" "${default_hub_name}")"
+fi
+
 if [[ -z "${PUBLIC_KEY}" ]]; then
   PUBLIC_KEY="$(prompt_required "Peer public key")"
 fi
@@ -236,10 +245,6 @@ validate_public_key "${PUBLIC_KEY}" || {
   echo "Public key format looks invalid." >&2
   exit 1
 }
-
-if [[ -z "${PEER_NAME}" ]]; then
-  PEER_NAME="spoke-${PROFILE}-${SLOT}"
-fi
 
 SUBNET_VALUE="$(get_env_value "${SUBNET_VAR}")"
 [[ -n "${SUBNET_VALUE}" ]] || {
@@ -260,15 +265,15 @@ if [[ -f "${ACTIVE_CONF}" ]]; then
 fi
 
 PEER_STANZA="[Peer]
-# ${PEER_NAME}
+# ${HUB_NAME}
 PublicKey = ${PUBLIC_KEY}
 AllowedIPs = ${PEER_IP}/32
 PersistentKeepalive = 25"
 
 SNIPPET_DIR="${SCRIPT_DIR}/profiles"
-SNIPPET_PATH="${SNIPPET_DIR}/peer-${SNIPPET_PREFIX}-$(slugify "${PEER_NAME}").conf.snippet"
+SNIPPET_PATH="${SNIPPET_DIR}/peer-${SNIPPET_PREFIX}-$(slugify "${HUB_NAME}").conf.snippet"
 
-echo "Registering ${PROFILE} peer ${PEER_NAME} (slot ${SLOT}, ${PEER_IP})"
+echo "Registering ${PROFILE} peer ${HUB_NAME} (slot ${SLOT}, ${PEER_IP})"
 
 if [[ "${DRY_RUN}" == "true" ]]; then
   if [[ -n "${CURRENT_KEY}" ]]; then

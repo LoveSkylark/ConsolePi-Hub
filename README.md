@@ -6,7 +6,6 @@ This tree is a staging pack for moving the ConnectPi hub-and-spoke WireGuard wor
 
 - `HUB/`: Docker-based hub stack with trusted and untrusted WireGuard profiles plus optional ConsolePi container.
 - `SPOKE/`: spoke-side installer, renderer, and Raspberry Pi setup docs.
-- `plan.md`: original design/build sheet used to shape the implementation.
 
 ## Import intent
 
@@ -17,8 +16,9 @@ Files intended to stay out of git are ignored at the repo root:
 - local `.env` files
 - rendered spoke configs
 - live WireGuard server configs
+- generated WireGuard key files and client profile examples
 - generated peer snippets
-- runtime ConsolePi data
+- runtime ConsolePi data and imported system-user keys
 - local backup files
 
 ## Before publishing upstream

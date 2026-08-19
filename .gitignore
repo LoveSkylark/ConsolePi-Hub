@@ -8,7 +8,9 @@ SPOKE/.env
 # Rendered or active WireGuard configs
 HUB/wireguard/trusted/config/wg_confs/wg-trusted.conf
 HUB/wireguard/untrusted/config/wg_confs/wg-untrusted.conf
-HUB/wireguard/config/wg_confs/wg0.conf
+HUB/wireguard/**/wg-*.privatekey
+HUB/wireguard/**/wg-*.publickey
+HUB/wireguard/profiles/profile-*.conf.example
 SPOKE/rendered/
 
 # Peer registration helper outputs
@@ -16,6 +18,8 @@ HUB/wireguard/profiles/*.conf.snippet
 
 # Runtime ConsolePi data
 HUB/consolepi/data/
+HUB/consolepi/runtime/
+HUB/consolepi/ssh/system-users/
 
 # Local backups and temporary files
 *.bak
