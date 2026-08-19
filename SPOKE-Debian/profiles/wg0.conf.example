@@ -1,0 +1,11 @@
+# UNTRUSTED spoke template
+
+[Interface]
+Address = 10.99.98.11/32
+PrivateKey = CHANGE_ME_SPOKE_PRIVATE_KEY
+
+[Peer]
+PublicKey = CHANGE_ME_HUB_PUBLIC_KEY
+Endpoint = change-me.example.com:51820
+AllowedIPs = 10.99.98.1/32
+PersistentKeepalive = 25

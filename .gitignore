@@ -4,6 +4,7 @@
 # Local environment files
 HUB/.env
 SPOKE/.env
+SPOKE-Debian/.env
 
 # Rendered or active WireGuard configs
 HUB/wireguard/trusted/config/wg_confs/wg-trusted.conf
@@ -12,6 +13,7 @@ HUB/wireguard/**/wg-*.privatekey
 HUB/wireguard/**/wg-*.publickey
 HUB/wireguard/profiles/profile-*.conf.example
 SPOKE/rendered/
+SPOKE-Debian/rendered/
 
 # Peer registration helper outputs
 HUB/wireguard/profiles/*.conf.snippet
