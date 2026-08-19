@@ -6,6 +6,7 @@ This tree is a staging pack for moving the ConnectPi hub-and-spoke WireGuard wor
 
 - `HUB/`: Docker-based hub stack with trusted and untrusted WireGuard profiles plus optional ConsolePi container.
 - `SPOKE/`: spoke-side installer, renderer, and Raspberry Pi setup docs.
+- `SPOKE-Debian/`: spoke-side installer for generic Debian-based hosts (e.g. a laptop), installing ConsolePi manually instead of via the Pi-only installer.
 
 ## Import intent
 
@@ -31,13 +32,18 @@ Files intended to stay out of git are ignored at the repo root:
 ## Primary entrypoints
 
 - Hub setup: `HUB/README.md`
-- Spoke setup: `SPOKE/README.md`
-- Spoke deploy tool: `SPOKE/deploy-spoke.sh`
+- Raspberry Pi spoke setup: `SPOKE/README.md`
+- Debian spoke setup: `SPOKE-Debian/README.md`
+- Spoke deploy tools: `SPOKE/deploy-spoke.sh`, `SPOKE-Debian/deploy-spoke-debian.sh`
 - Hub peer helper: `HUB/wireguard/register-peer.sh`
 
 ## Direct SPOKE install
 
-Run on a Raspberry Pi to install/update the SPOKE tooling and deploy:
+Run on the spoke host to install/update the SPOKE tooling and deploy. The installer
+detects whether it's running on a Raspberry Pi or a generic Debian-based host and
+runs the matching deploy script (`SPOKE/deploy-spoke.sh` or
+`SPOKE-Debian/deploy-spoke-debian.sh`). Override detection with
+`CONSOLEPI_SPOKE_KIND=pi` or `CONSOLEPI_SPOKE_KIND=debian` if needed.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LoveSkylark/ConsolePi-Hub/main/install/install-spoke.sh | bash
